@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="E:\Programs\DirectXSDK_Nov2008\include"
+				AdditionalIncludeDirectories="E:\Programs\DirectXSDK_Nov2008\include;..\clib\include;..\cpplib\include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -61,9 +61,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="d3d9.lib d3dx9.lib dxerr9.lib dxguid.lib"
+				AdditionalDependencies="d3d9.lib d3dx9.lib dxerr9.lib dxguid.lib clib.lib"
 				LinkIncremental="2"
-				AdditionalLibraryDirectories="E:\Programs\DirectXSDK_Nov2008\Lib\x86"
+				AdditionalLibraryDirectories="E:\Programs\DirectXSDK_Nov2008\Lib\x86;..\clib\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				SubSystem="2"
 				TargetMachine="1"
@@ -117,7 +117,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="E:\Programs\DirectXSDK_Nov2008\include"
+				AdditionalIncludeDirectories="E:\Programs\DirectXSDK_Nov2008\include;..\clib\include;..\cpplib\include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -136,9 +136,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="d3d9.lib d3dx9.lib dxerr9.lib dxguid.lib"
+				AdditionalDependencies="d3d9.lib d3dx9.lib dxerr9.lib dxguid.lib clib.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="E:\Programs\DirectXSDK_Nov2008\Lib\x86"
+				AdditionalLibraryDirectories="E:\Programs\DirectXSDK_Nov2008\Lib\x86;..\clib\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				SubSystem="2"
 				OptimizeReferences="2"
