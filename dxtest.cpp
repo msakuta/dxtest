@@ -16,9 +16,9 @@ static HWND hWndApp;
 IDirect3D9 *pd3d;
 IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
+LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
+LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
 
-typedef Vec4<float> Vec4f;
-typedef Vec3<float> Vec3f;
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
@@ -27,12 +27,67 @@ struct CUSTOMVERTEX{
 	DWORD c;
 };
 
+
+const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_DIFFUSE|D3DFVF_TEX1);
+
+struct TextureVertex{
+	D3DXVECTOR3 position;
+	D3DCOLOR color;
+	FLOAT tu, tv;
+};
+
 static int CC = 10560;
 static suf_t *suf;
 
-#if 1
-HRESULT InitVB()
+HRESULT InitD3D(HWND hWnd)
 {
+	pd3d = Direct3DCreate9(D3D_SDK_VERSION);
+	if(!pd3d)
+		return E_FAIL;
+
+	D3DPRESENT_PARAMETERS pp;
+	ZeroMemory(&pp, sizeof pp);
+	pp.Windowed = TRUE;
+	pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+	pp.BackBufferFormat = D3DFMT_UNKNOWN;
+	pp.EnableAutoDepthStencil = TRUE;
+	pp.AutoDepthStencilFormat = D3DFMT_D16;
+
+	HRESULT hr = pd3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
+		D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+		&pp, &pdev);
+
+	if(FAILED(hr))
+		return E_FAIL;
+
+	// Turn off culling, so we see the front and back of the triangle
+	pdev->SetRenderState( D3DRS_CULLMODE, D3DCULL_NONE );
+
+	// Turn off D3D lighting, since we are providing our own vertex colors
+	pdev->SetRenderState( D3DRS_LIGHTING, FALSE );
+
+    // Turn on the zbuffer
+    pdev->SetRenderState( D3DRS_ZENABLE, TRUE );
+
+	return S_OK;
+}
+
+#if 1
+HRESULT InitGeometry()
+{
+    // Use D3DX to create a texture from a file based image
+//    if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture ) ) )
+    if( FAILED( D3DXCreateTextureFromFile( pdev, L"grass.jpg", &g_pTexture ) ) )
+    {
+        // If texture is not in current folder, try parent folder
+        if( FAILED( D3DXCreateTextureFromFile( pdev, L"..\\banana.bmp", &g_pTexture ) ) )
+        {
+            MessageBox( NULL, L"Could not find banana.bmp", L"Textures.exe", MB_OK );
+            return E_FAIL;
+        }
+    }
+
+
 	const char *fname = "../gltestplus/models/interceptor0.bin";
 	{
 		suf_t *ret;
@@ -85,7 +140,27 @@ HRESULT InitVB()
 
 	free(g_Vertices);
 
-    return S_OK;
+
+	TextureVertex vertices[4] = {
+		{Vec4f(-10, -2, -10, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(-10, -2,  10, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f( 10, -2,  10, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f( 10, -2, -10, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+	};
+
+    if( FAILED( pdev->CreateVertexBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
+    {
+        return E_FAIL;
+    }
+
+	if( FAILED( g_ground->Lock( 0, sizeof(vertices), (void**)&pVertices, 0 ) ) )
+		return E_FAIL;
+
+    memcpy( pVertices, vertices, sizeof(vertices) );
+    g_ground->Unlock();
+
+
+	return S_OK;
 }
 #endif
 
@@ -102,16 +177,21 @@ VOID SetupMatrices()
     // every 1000 ms. To avoid the loss of precision inherent in very high 
     // floating point numbers, the system time is modulated by the rotation 
     // period before conversion to a radian angle.
-    UINT iTime = clock() % 1000;
-    FLOAT fAngle = iTime * ( 2.0f * D3DX_PI ) / 1000.0f;
-    D3DXMatrixRotationY( &matWorld, fAngle );
+    UINT iTime = clock() % 5000;
+    FLOAT fAngle = iTime * ( 2.0f * D3DX_PI ) / 5000.0f;
+	FLOAT fPitch = sin(clock() % 33333 * (2.f * D3DX_PI) / 33333.f);
+	D3DXMATRIXA16 matPitch;
+	D3DXMatrixRotationX(&matPitch, fPitch);
+	D3DXMATRIXA16 matYaw;
+    D3DXMatrixRotationY(&matYaw, fAngle);
+	D3DXMatrixMultiply(&matWorld, &matYaw, &matPitch);
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 
     // Set up our view matrix. A view matrix can be defined given an eye point,
     // a point to lookat, and a direction for which way is up. Here, we set the
     // eye five units back along the z-axis and up three units, look at the
     // origin, and define "up" to be in the y-direction.
-    D3DXVECTOR3 vEyePt( 0.0f, 3.0f,-5.0f );
+    D3DXVECTOR3 vEyePt( 0.0f, .0f, -10.0f );
     D3DXVECTOR3 vLookatPt( 0.0f, 0.0f, 0.0f );
     D3DXVECTOR3 vUpVec( 0.0f, 1.0f, 0.0f );
     D3DXMATRIXA16 matView;
@@ -127,27 +207,33 @@ VOID SetupMatrices()
     D3DXMATRIXA16 matProj;
     D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, 1.0f, 1.0f, 100.0f );
     pdev->SetTransform( D3DTS_PROJECTION, &matProj );
+
+	pdev->LightEnable(0, FALSE);
 }
 
 
 
 static void display_func(){
 	static int frame = 0;
-	pdev->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
+	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
 	frame++;
 
 	if(SUCCEEDED(pdev->BeginScene())){
 		SetupMatrices();
-        // Draw the triangles in the vertex buffer. This is broken into a few
-        // steps. We are passing the vertices down a "stream", so first we need
-        // to specify the source of that stream, which is our vertex buffer. Then
-        // we need to let D3D know what vertex shader to use. Full, custom vertex
-        // shaders are an advanced topic, but in most cases the vertex shader is
-        // just the FVF, so that D3D knows what type of vertices we are dealing
-        // with. Finally, we call DrawPrimitive() which does the actual rendering
-        // of our geometry (in this case, just one triangle).
-        pdev->SetStreamSource( 0, g_pVB, 0, sizeof( CUSTOMVERTEX ) );
+
+		pdev->SetTexture( 0, g_pTexture);
+		pdev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+		pdev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+        pdev->SetTextureStageState( 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE );
+        pdev->SetTextureStageState( 0, D3DTSS_ALPHAOP, D3DTOP_DISABLE );
+
+		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
+        pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
+		pdev->DrawPrimitive( D3DPT_TRIANGLEFAN, 0, 2 );
+
+		pdev->SetStreamSource( 0, g_pVB, 0, sizeof( CUSTOMVERTEX ) );
         pdev->SetFVF( D3DFVF_CUSTOMVERTEX );
+
 		for(int n = 0; n < 100; n++)
 	        pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, CC/3 );
 /*		for(int n = 0; n < 20; n++){
@@ -191,9 +277,6 @@ static LRESULT WINAPI CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, L
 }
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
-	pd3d = Direct3DCreate9(D3D_SDK_VERSION);
-	if(!pd3d)
-		return -1;
 	ATOM atom;
 	HWND hWnd;
 	{
@@ -228,18 +311,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 		hWndApp = hWnd = CreateWindow(LPCTSTR(atom), L"dxtest", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, NULL, NULL, hInst, NULL);
 
-		D3DPRESENT_PARAMETERS pp;
-		ZeroMemory(&pp, sizeof pp);
-		pp.Windowed = TRUE;
-		pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-		pp.BackBufferFormat = D3DFMT_UNKNOWN;
-
-		HRESULT hr = pd3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &pdev);
-
-		if(FAILED(hr))
+		if( !SUCCEEDED( InitD3D(hWnd) ) )
 			return 0;
         
-		if( !SUCCEEDED( InitVB() ) )
+		if( !SUCCEEDED( InitGeometry() ) )
 			return 0;
 
 		do{
