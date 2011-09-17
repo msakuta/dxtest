@@ -5,9 +5,11 @@ extern "C"{
 #include <clib/c.h>
 #include <clib/suf/suf.h>
 #include <clib/suf/sufbin.h>
+#include <clib/rseq.h>
 }
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
+#include <cpplib/quat.h>
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
@@ -18,6 +20,7 @@ IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
+LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
@@ -35,6 +38,19 @@ struct TextureVertex{
 	D3DCOLOR color;
 	FLOAT tu, tv;
 };
+
+class Player{
+public:
+	Player() : pos(0, 0, -20), rot(0,0,0,1){}
+	const Vec3d &getPos()const{return pos;}
+	const Quatd &getRot()const{return rot;}
+	void setPos(const Vec3d &apos){pos = apos;}
+	void setRot(const Quatd &arot){rot = arot;}
+	Vec3d pos;
+	Quatd rot;
+};
+
+static Player player;
 
 static int CC = 10560;
 static suf_t *suf;
@@ -61,7 +77,7 @@ HRESULT InitD3D(HWND hWnd)
 		return E_FAIL;
 
 	// Turn off culling, so we see the front and back of the triangle
-	pdev->SetRenderState( D3DRS_CULLMODE, D3DCULL_NONE );
+	pdev->SetRenderState( D3DRS_CULLMODE, D3DCULL_CW );
 
 	// Turn off D3D lighting, since we are providing our own vertex colors
 	pdev->SetRenderState( D3DRS_LIGHTING, FALSE );
@@ -77,14 +93,16 @@ HRESULT InitGeometry()
 {
     // Use D3DX to create a texture from a file based image
 //    if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture ) ) )
-    if( FAILED( D3DXCreateTextureFromFile( pdev, L"grass.jpg", &g_pTexture ) ) )
-    {
-        // If texture is not in current folder, try parent folder
-        if( FAILED( D3DXCreateTextureFromFile( pdev, L"..\\banana.bmp", &g_pTexture ) ) )
-        {
-            MessageBox( NULL, L"Could not find banana.bmp", L"Textures.exe", MB_OK );
-            return E_FAIL;
-        }
+	if( FAILED( D3DXCreateTextureFromFile( pdev, L"grass.jpg", &g_pTexture ) ) )
+	{
+		MessageBox( NULL, L"Could not find grass.jpg", L"Textures.exe", MB_OK );
+		return E_FAIL;
+    }
+
+	if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture2 ) ) )
+	{
+		MessageBox( NULL, L"Could not find banana.bmp", L"Textures.exe", MB_OK );
+		return E_FAIL;
     }
 
 
@@ -141,11 +159,48 @@ HRESULT InitGeometry()
 	free(g_Vertices);
 
 
-	TextureVertex vertices[4] = {
-		{Vec4f(-10, -2, -10, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(-10, -2,  10, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f( 10, -2,  10, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f( 10, -2, -10, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+	TextureVertex vertices[] = {
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+
+		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+
+		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+
+		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
+		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
+		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
 	};
 
     if( FAILED( pdev->CreateVertexBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
@@ -170,6 +225,39 @@ HRESULT InitGeometry()
 //-----------------------------------------------------------------------------
 VOID SetupMatrices()
 {
+
+    // Set up our view matrix. A view matrix can be defined given an eye point,
+    // a point to lookat, and a direction for which way is up. Here, we set the
+    // eye five units back along the z-axis and up three units, look at the
+    // origin, and define "up" to be in the y-direction.
+    D3DXVECTOR3 vEyePt( 0.0f, 1.50f, -20.0f );
+    D3DXVECTOR3 vLookatPt( 0.0f, 0.0f, 0.0f );
+    D3DXVECTOR3 vUpVec( 0.0f, 1.0f, 0.0f );
+    D3DXMATRIXA16 matEye;
+//    D3DXMatrixLookAtLH( &matEye, &vEyePt, &vLookatPt, &vUpVec );
+	D3DXMatrixRotationQuaternion(&matEye, (D3DXQUATERNION*)(&player.rot.cast<float>()));
+	D3DXMATRIXA16 matRot;
+	FLOAT fYaw = clock() % 5000 * (2.f * D3DX_PI) / 5000.f;
+//	D3DXMatrixRotationY(&matRot, fYaw);
+	D3DXMatrixTranslation(&matRot, -player.pos[0], -player.pos[1], -player.pos[2]);
+    D3DXMATRIXA16 matView;
+	D3DXMatrixMultiply(&matView, &matRot, &matEye);
+    pdev->SetTransform( D3DTS_VIEW, &matView );
+
+    // For the projection matrix, we set up a perspective transform (which
+    // transforms geometry from 3D view space to 2D viewport space, with
+    // a perspective divide making objects smaller in the distance). To build
+    // a perpsective transform, we need the field of view (1/4 pi is common),
+    // the aspect ratio, and the near and far clipping planes (which define at
+    // what distances geometry should be no longer be rendered).
+    D3DXMATRIXA16 matProj;
+    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, 1.0f, 1.0f, 100.0f );
+    pdev->SetTransform( D3DTS_PROJECTION, &matProj );
+
+	pdev->LightEnable(0, FALSE);
+}
+
+void RotateModel(){
     // For our world matrix, we will just rotate the object about the y-axis.
     D3DXMATRIXA16 matWorld;
 
@@ -186,40 +274,108 @@ VOID SetupMatrices()
     D3DXMatrixRotationY(&matYaw, fAngle);
 	D3DXMatrixMultiply(&matWorld, &matYaw, &matPitch);
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
-
-    // Set up our view matrix. A view matrix can be defined given an eye point,
-    // a point to lookat, and a direction for which way is up. Here, we set the
-    // eye five units back along the z-axis and up three units, look at the
-    // origin, and define "up" to be in the y-direction.
-    D3DXVECTOR3 vEyePt( 0.0f, .0f, -10.0f );
-    D3DXVECTOR3 vLookatPt( 0.0f, 0.0f, 0.0f );
-    D3DXVECTOR3 vUpVec( 0.0f, 1.0f, 0.0f );
-    D3DXMATRIXA16 matView;
-    D3DXMatrixLookAtLH( &matView, &vEyePt, &vLookatPt, &vUpVec );
-    pdev->SetTransform( D3DTS_VIEW, &matView );
-
-    // For the projection matrix, we set up a perspective transform (which
-    // transforms geometry from 3D view space to 2D viewport space, with
-    // a perspective divide making objects smaller in the distance). To build
-    // a perpsective transform, we need the field of view (1/4 pi is common),
-    // the aspect ratio, and the near and far clipping planes (which define at
-    // what distances geometry should be no longer be rendered).
-    D3DXMATRIXA16 matProj;
-    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, 1.0f, 1.0f, 100.0f );
-    pdev->SetTransform( D3DTS_PROJECTION, &matProj );
-
-	pdev->LightEnable(0, FALSE);
 }
 
+const int CELLSIZE = 16;
 
+class Cell{
+public:
+	enum Type{Air, Grass, Banana};
+
+	Cell(Type t = Air) : type(t){}
+	Type getType()const{return type;}
+protected:
+	enum Type type;
+};
+
+static Cell massvolume[CELLSIZE][CELLSIZE][CELLSIZE];
+
+
+class PerlinNoiseCallback{
+public:
+	virtual void operator()(float, int ix, int iy) = 0;
+};
+
+class FieldAssign : public PerlinNoiseCallback{
+	typedef float (&fieldType)[CELLSIZE][CELLSIZE];
+	fieldType field;
+public:
+	FieldAssign(fieldType field) : field(field){}
+	void operator()(float f, int ix, int iy){
+		field[ix][iy] = f;
+	}
+};
+
+static void perlin_noise(long seed, PerlinNoiseCallback &callback){
+	byte work[CELLSIZE][CELLSIZE];
+	float work2[CELLSIZE][CELLSIZE] = {0};
+	float maxwork2 = 0;
+	int octave;
+	struct random_sequence rs;
+	init_rseq(&rs, seed);
+	for(octave = 0; (1 << octave) < CELLSIZE; octave += 1){
+		int cell = 1 << octave;
+		int xi, yi, zi;
+		int k;
+		for(xi = 0; xi < CELLSIZE / cell; xi++) for(yi = 0; yi < CELLSIZE / cell; yi++){
+			int base;
+			base = rseq(&rs) % 256;
+			if(octave == 0)
+				callback(base, xi, yi);
+			else
+				work[xi][yi] = /*rseq(&rs) % 32 +*/ base;
+		}
+		if(octave == 0){
+			for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++)
+				work2[xi][yi] = work[xi][yi];
+		}
+		else for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++){
+			int xj, yj, zj;
+			int sum[4] = {0};
+			for(k = 0; k < 1; k++){
+				for(xj = 0; xj <= 1; xj++) for(yj = 0; yj <= 1; yj++){
+					sum[k] += (double)work[xi / cell + xj][yi / cell + yj]
+					* (xj ? xi % cell : (cell - xi % cell - 1)) / (double)cell
+					* (yj ? yi % cell : (cell - yi % cell - 1)) / (double)cell;
+				}
+				work2[xi][yi] = work2[xi][yi] + sum[k];
+				if(maxwork2 < work2[xi][yi])
+					maxwork2 = work2[xi][yi];
+			}
+		}
+	}
+	for(int xi = 0; xi < CELLSIZE; xi++) for(int yi = 0; yi < CELLSIZE; yi++){
+		callback(work2[xi][yi] / maxwork2, xi, yi);
+	}
+}
+
+static void initializeVolume(){
+	float field[CELLSIZE][CELLSIZE];
+	perlin_noise(12321, FieldAssign(field));
+	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
+		massvolume[ix][iy][iz] = Cell(field[ix][iz] * 8 < iy ? Cell::Air : Cell::Grass);
+	}
+}
 
 static void display_func(){
 	static int frame = 0;
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
 	frame++;
 
+/*	for(int i = 0; i < 10; i++){
+		int ix, iy, iz;
+		ix = rand() % CELLSIZE;
+		iy = rand() % CELLSIZE;
+		iz = rand() % CELLSIZE;
+		massvolume[ix][iy][iz] = Cell(Cell::Type(rand() % 3));
+	}*/
+
 	if(SUCCEEDED(pdev->BeginScene())){
 		SetupMatrices();
+
+		D3DXMATRIXA16 matWorld;
+		D3DXMatrixIdentity(&matWorld);
+	    pdev->SetTransform( D3DTS_WORLD, &matWorld );
 
 		pdev->SetTexture( 0, g_pTexture);
 		pdev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
@@ -229,7 +385,21 @@ static void display_func(){
 
 		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
         pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
-		pdev->DrawPrimitive( D3DPT_TRIANGLEFAN, 0, 2 );
+
+		for(int ix = 0; ix < CELLSIZE; ix++){
+			for(int iy = 0; iy < CELLSIZE; iy++){
+				for(int iz = 0; iz < CELLSIZE; iz++){
+					if(massvolume[ix][iy][iz].getType() != Cell::Air){
+						pdev->SetTexture( 0, massvolume[ix][iy][iz].getType() == Cell::Grass ? g_pTexture : g_pTexture2);
+						D3DXMatrixTranslation(&matWorld, (ix - CELLSIZE / 2) * 1, (iy - CELLSIZE / 2) * 1, (iz - CELLSIZE / 2) * 1);
+						pdev->SetTransform(D3DTS_WORLD, &matWorld);
+						pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+					}
+				}
+			}
+		}
+
+		RotateModel();
 
 		pdev->SetStreamSource( 0, g_pVB, 0, sizeof( CUSTOMVERTEX ) );
         pdev->SetFVF( D3DFVF_CUSTOMVERTEX );
@@ -251,12 +421,32 @@ static void display_func(){
 //	if(hr == D3DERR_DEVICELOST)
 }
 
+const double movespeed = .1;
+const double rotatespeed = acos(0.) / 10.;
+
+static void key_func(unsigned char key, int x, int y){
+	switch(key){
+		case 'w': player.pos += movespeed * Vec3d(0,0,1); break;
+		case 's': player.pos += movespeed * Vec3d(0,0,-1); break;
+		case 'a': player.pos += movespeed * Vec3d(-1,0,0); break;
+		case 'd': player.pos += movespeed * Vec3d(1,0,0); break;
+		case 'q': player.pos += movespeed * Vec3d(0,1,0); break;
+		case 'z': player.pos += movespeed * Vec3d(0,-1,0); break;
+		case '4': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, 1, 0))); break;
+		case '6': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, -1, 0))); break;
+		case '8': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(1, 0, 0))); break;
+		case '2': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(-1, 0, 0))); break;
+	}
+}
+
+
 static LRESULT WINAPI CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam){
 	static HDC hdc;
 	static HGLRC hgl = NULL;
 	static int moc = 0;
 	switch(message){
 		case WM_CREATE:
+			initializeVolume();
 			break;
 
 		case WM_TIMER:
@@ -264,6 +454,7 @@ static LRESULT WINAPI CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, L
 			break;
 
 		case WM_CHAR:
+			key_func(wParam, 0, 0);
 			break;
 
 		case WM_DESTROY:
