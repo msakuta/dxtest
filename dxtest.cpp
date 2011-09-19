@@ -1,3 +1,4 @@
+#include "perlinNoise.h"
 #include <assert.h>
 #include <windows.h>
 #include <d3dx9.h>
@@ -5,7 +6,7 @@ extern "C"{
 #include <clib/c.h>
 #include <clib/suf/suf.h>
 #include <clib/suf/sufbin.h>
-#include <clib/rseq.h>
+#include <clib/timemeas.h>
 }
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
@@ -21,6 +22,8 @@ LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
 LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
+
+const int CELLSIZE = 32;
 
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
@@ -41,14 +44,24 @@ struct TextureVertex{
 
 class Player{
 public:
-	Player() : pos(0, 0, -20), rot(0,0,0,1){}
+	Player() : pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1){py[0] = py[1] = 0.;}
 	const Vec3d &getPos()const{return pos;}
 	const Quatd &getRot()const{return rot;}
 	void setPos(const Vec3d &apos){pos = apos;}
 	void setRot(const Quatd &arot){rot = arot;}
+	void think(double dt);
+	void updateRot(){
+		rot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
+	}
 	Vec3d pos;
+	Vec3d velo;
 	Quatd rot;
+	double py[2]; ///< Pitch and Yaw
 };
+
+void Player::think(double dt){
+	pos += velo * dt;
+}
 
 static Player player;
 
@@ -99,11 +112,11 @@ HRESULT InitGeometry()
 		return E_FAIL;
     }
 
-	if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture2 ) ) )
+/*	if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture2 ) ) )
 	{
 		MessageBox( NULL, L"Could not find banana.bmp", L"Textures.exe", MB_OK );
 		return E_FAIL;
-    }
+    }*/
 
 
 	const char *fname = "../gltestplus/models/interceptor0.bin";
@@ -276,7 +289,6 @@ void RotateModel(){
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
 
-const int CELLSIZE = 16;
 
 class Cell{
 public:
@@ -288,79 +300,89 @@ protected:
 	enum Type type;
 };
 
-static Cell massvolume[CELLSIZE][CELLSIZE][CELLSIZE];
-
-
-class PerlinNoiseCallback{
+class CellVolume{
 public:
-	virtual void operator()(float, int ix, int iy) = 0;
+	class CellInt : public Cell{
+	public:
+		CellInt(Type t = Air) : Cell(t), adjcents(0){}
+		int adjcents;
+	};
+
+protected:
+	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
+
+	void updateAdj(int ix, int iy, int iz){
+		v[ix][iy][iz].adjcents =
+			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
+			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
+			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
+			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
+			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
+			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
+	}
+public:
+	CellVolume(){}
+	const CellInt &operator()(int ix, int iy, int iz)const{
+		return v[ix][iy][iz];
+	}
+	bool isSolid(const Vec3i &ipos)const{
+		return
+			0 <= ipos[0] && ipos[0] < CELLSIZE &&
+			0 <= ipos[1] && ipos[1] < CELLSIZE &&
+			0 <= ipos[2] && ipos[2] < CELLSIZE &&
+			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
+	}
+	void setCell(const Cell &c, int ix, int iy, int iz){
+		v[ix][iy][iz] = CellInt(c.getType());
+	}
+	void initialize(){
+		float field[CELLSIZE][CELLSIZE];
+		PerlinNoise::perlin_noise<CELLSIZE>(12321, PerlinNoise::FieldAssign<CELLSIZE>(field));
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
+			v[ix][iy][iz] = CellInt(field[ix][iz] * 8 < iy ? Cell::Air : Cell::Grass);
+		}
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
+			updateAdj(ix, iy, iz);
+		}
+	}
 };
 
-class FieldAssign : public PerlinNoiseCallback{
-	typedef float (&fieldType)[CELLSIZE][CELLSIZE];
-	fieldType field;
-public:
-	FieldAssign(fieldType field) : field(field){}
-	void operator()(float f, int ix, int iy){
-		field[ix][iy] = f;
-	}
-};
+static CellVolume massvolume;
 
-static void perlin_noise(long seed, PerlinNoiseCallback &callback){
-	byte work[CELLSIZE][CELLSIZE];
-	float work2[CELLSIZE][CELLSIZE] = {0};
-	float maxwork2 = 0;
-	int octave;
-	struct random_sequence rs;
-	init_rseq(&rs, seed);
-	for(octave = 0; (1 << octave) < CELLSIZE; octave += 1){
-		int cell = 1 << octave;
-		int xi, yi, zi;
-		int k;
-		for(xi = 0; xi < CELLSIZE / cell; xi++) for(yi = 0; yi < CELLSIZE / cell; yi++){
-			int base;
-			base = rseq(&rs) % 256;
-			if(octave == 0)
-				callback(base, xi, yi);
-			else
-				work[xi][yi] = /*rseq(&rs) % 32 +*/ base;
-		}
-		if(octave == 0){
-			for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++)
-				work2[xi][yi] = work[xi][yi];
-		}
-		else for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++){
-			int xj, yj, zj;
-			int sum[4] = {0};
-			for(k = 0; k < 1; k++){
-				for(xj = 0; xj <= 1; xj++) for(yj = 0; yj <= 1; yj++){
-					sum[k] += (double)work[xi / cell + xj][yi / cell + yj]
-					* (xj ? xi % cell : (cell - xi % cell - 1)) / (double)cell
-					* (yj ? yi % cell : (cell - yi % cell - 1)) / (double)cell;
-				}
-				work2[xi][yi] = work2[xi][yi] + sum[k];
-				if(maxwork2 < work2[xi][yi])
-					maxwork2 = work2[xi][yi];
-			}
-		}
-	}
-	for(int xi = 0; xi < CELLSIZE; xi++) for(int yi = 0; yi < CELLSIZE; yi++){
-		callback(work2[xi][yi] / maxwork2, xi, yi);
-	}
-}
+
 
 static void initializeVolume(){
-	float field[CELLSIZE][CELLSIZE];
-	perlin_noise(12321, FieldAssign(field));
-	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-		massvolume[ix][iy][iz] = Cell(field[ix][iz] * 8 < iy ? Cell::Air : Cell::Grass);
-	}
+	massvolume.initialize();
 }
 
 static void display_func(){
 	static int frame = 0;
+	static timemeas_t tm;
+	double dt = 0.;
+
+	if(frame == 0){
+		TimeMeasStart(&tm);
+	}
+	else{
+		dt = TimeMeasLap(&tm);
+		TimeMeasStart(&tm);
+	}
+
+	player.velo += Vec3d(0,-9.8,0) * dt;
+	player.think(dt);
+	Vec3i ipos = (player.pos + Vec3d(-1,-1.7,-1)).cast<int>() + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
+	if(massvolume.isSolid(ipos) || massvolume.isSolid(ipos - Vec3i(0,1,0))){
+		player.velo.clear();
+		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7;
+	}
+	else if(massvolume.isSolid(ipos + Vec3i(0,2,0))){
+		player.velo.clear();
+		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7 + 1;
+	}
+
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
 	frame++;
+
 
 /*	for(int i = 0; i < 10; i++){
 		int ix, iy, iz;
@@ -389,11 +411,32 @@ static void display_func(){
 		for(int ix = 0; ix < CELLSIZE; ix++){
 			for(int iy = 0; iy < CELLSIZE; iy++){
 				for(int iz = 0; iz < CELLSIZE; iz++){
-					if(massvolume[ix][iy][iz].getType() != Cell::Air){
-						pdev->SetTexture( 0, massvolume[ix][iy][iz].getType() == Cell::Grass ? g_pTexture : g_pTexture2);
+					if(massvolume(ix, iy, iz).getType() != Cell::Air && massvolume(ix, iy, iz).adjcents < 6){
+						bool x0 = massvolume((ix - 1 + CELLSIZE) % CELLSIZE, iy, iz).getType() != Cell::Air;
+						bool x1 = massvolume((ix + 1) % CELLSIZE, iy, iz).getType() != Cell::Air;
+						bool y0 = massvolume(ix, (iy - 1 + CELLSIZE) % CELLSIZE, iz).getType() != Cell::Air;
+						bool y1 = massvolume(ix, (iy + 1) % CELLSIZE, iz).getType() != Cell::Air;
+						bool z0 = massvolume(ix, iy, (iz - 1 + CELLSIZE) % CELLSIZE).getType() != Cell::Air;
+						bool z1 = massvolume(ix, iy, (iz + 1) % CELLSIZE).getType() != Cell::Air;
+						pdev->SetTexture( 0, massvolume(ix, iy, iz).getType() == Cell::Grass ? g_pTexture : g_pTexture2);
 						D3DXMatrixTranslation(&matWorld, (ix - CELLSIZE / 2) * 1, (iy - CELLSIZE / 2) * 1, (iz - CELLSIZE / 2) * 1);
 						pdev->SetTransform(D3DTS_WORLD, &matWorld);
-						pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+						if(!x0 && !x1 && !y0 && !y1)
+							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+						else{
+							if(!x0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 8 * 3, 2 );
+							if(!x1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 10 * 3, 2 );
+							if(!y0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 2 );
+							if(!y1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 2 * 3, 2 );
+							if(!z0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 4 * 3, 2 );
+							if(!z1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 6 * 3, 2 );
+						}
 					}
 				}
 			}
@@ -426,16 +469,23 @@ const double rotatespeed = acos(0.) / 10.;
 
 static void key_func(unsigned char key, int x, int y){
 	switch(key){
-		case 'w': player.pos += movespeed * Vec3d(0,0,1); break;
-		case 's': player.pos += movespeed * Vec3d(0,0,-1); break;
-		case 'a': player.pos += movespeed * Vec3d(-1,0,0); break;
-		case 'd': player.pos += movespeed * Vec3d(1,0,0); break;
+		case 'w': player.pos += movespeed * player.rot.itrans(Vec3d(0,0,1)); break;
+		case 's': player.pos += movespeed * player.rot.itrans(Vec3d(0,0,-1)); break;
+		case 'a': player.pos += movespeed * player.rot.itrans(Vec3d(-1,0,0)); break;
+		case 'd': player.pos += movespeed * player.rot.itrans(Vec3d(1,0,0)); break;
 		case 'q': player.pos += movespeed * Vec3d(0,1,0); break;
 		case 'z': player.pos += movespeed * Vec3d(0,-1,0); break;
+#if 1
+		case '4': player.py[1] += rotatespeed; player.updateRot(); break;
+		case '6': player.py[1] -= rotatespeed; player.updateRot(); break;
+		case '8': player.py[0] += rotatespeed; player.updateRot(); break;
+		case '2': player.py[0] -= rotatespeed; player.updateRot(); break;
+#else
 		case '4': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, 1, 0))); break;
 		case '6': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, -1, 0))); break;
 		case '8': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(1, 0, 0))); break;
 		case '2': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(-1, 0, 0))); break;
+#endif
 	}
 }
 
