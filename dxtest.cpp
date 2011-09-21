@@ -44,26 +44,120 @@ struct TextureVertex{
 
 class Player{
 public:
-	Player() : pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1){py[0] = py[1] = 0.;}
+	Player() : pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.;}
 	const Vec3d &getPos()const{return pos;}
 	const Quatd &getRot()const{return rot;}
 	void setPos(const Vec3d &apos){pos = apos;}
 	void setRot(const Quatd &arot){rot = arot;}
 	void think(double dt);
 	void updateRot(){
-		rot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
+		desiredRot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
 	}
+	bool trymove(const Vec3d &delta, bool setvelo = false);
 	Vec3d pos;
 	Vec3d velo;
 	Quatd rot;
+	Quatd desiredRot;
 	double py[2]; ///< Pitch and Yaw
 };
 
-void Player::think(double dt){
-	pos += velo * dt;
-}
+class Cell{
+public:
+	enum Type{Air, Grass, Banana};
+
+	Cell(Type t = Air) : type(t){}
+	Type getType()const{return type;}
+protected:
+	enum Type type;
+};
+
+class CellVolume{
+public:
+	class CellInt : public Cell{
+	public:
+		CellInt(Type t = Air) : Cell(t), adjcents(0){}
+		int adjcents;
+	};
+
+protected:
+	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
+
+	void updateAdj(int ix, int iy, int iz){
+		v[ix][iy][iz].adjcents =
+			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
+			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
+			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
+			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
+			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
+			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
+	}
+public:
+	CellVolume(){}
+	const CellInt &operator()(int ix, int iy, int iz)const{
+		return v[ix][iy][iz];
+	}
+	bool isSolid(const Vec3i &ipos)const{
+		return
+			0 <= ipos[0] && ipos[0] < CELLSIZE &&
+			0 <= ipos[1] && ipos[1] < CELLSIZE &&
+			0 <= ipos[2] && ipos[2] < CELLSIZE &&
+			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
+	}
+	void setCell(const Cell &c, int ix, int iy, int iz){
+		v[ix][iy][iz] = CellInt(c.getType());
+	}
+	void initialize(){
+		float field[CELLSIZE][CELLSIZE];
+		PerlinNoise::perlin_noise<CELLSIZE>(12321, PerlinNoise::FieldAssign<CELLSIZE>(field));
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
+			v[ix][iy][iz] = CellInt(field[ix][iz] * 8 < iy ? Cell::Air : Cell::Grass);
+		}
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
+			updateAdj(ix, iy, iz);
+		}
+	}
+};
+
+class World{
+public:
+	CellVolume volume;
+};
 
 static Player player;
+static World world;
+
+static Vec3i real2ind(const Vec3d &pos);
+
+void Player::think(double dt){
+	player.velo += Vec3d(0,-9.8,0) * dt;
+
+	Vec3i ipos = real2ind(player.pos);
+	if(world.volume.isSolid(ipos)/* || world.volume.isSolid(ipos - Vec3i(0,1,0))*/){
+		player.velo.clear();
+		player.pos[1] = ipos[1] - CELLSIZE / 2 + 2.7;
+	}
+/*	else if(world.volume.isSolid(ipos + Vec3i(0,1,0))){
+		player.velo.clear();
+		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7 + 1;
+	}*/
+
+	pos += velo * dt;
+	rot = Quatd::slerp(desiredRot, rot, exp(-dt * 5.));
+}
+
+bool Player::trymove(const Vec3d &delta, bool setvelo){
+	if(setvelo){
+		velo += delta;
+		return true;
+	}
+	Vec3d dest = pos + Quatd::rotation(py[1], 0, 1, 0).itrans(delta);
+	if(!world.volume.isSolid(real2ind(dest + Vec3d(0,.5,0)))){
+		pos = dest;
+		return true;
+	}
+	return false;
+}
+
 
 static int CC = 10560;
 static suf_t *suf;
@@ -290,69 +384,25 @@ void RotateModel(){
 }
 
 
-class Cell{
-public:
-	enum Type{Air, Grass, Banana};
 
-	Cell(Type t = Air) : type(t){}
-	Type getType()const{return type;}
-protected:
-	enum Type type;
-};
-
-class CellVolume{
-public:
-	class CellInt : public Cell{
-	public:
-		CellInt(Type t = Air) : Cell(t), adjcents(0){}
-		int adjcents;
-	};
-
-protected:
-	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
-
-	void updateAdj(int ix, int iy, int iz){
-		v[ix][iy][iz].adjcents =
-			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
-			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
-			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
-			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
-			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
-			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
-	}
-public:
-	CellVolume(){}
-	const CellInt &operator()(int ix, int iy, int iz)const{
-		return v[ix][iy][iz];
-	}
-	bool isSolid(const Vec3i &ipos)const{
-		return
-			0 <= ipos[0] && ipos[0] < CELLSIZE &&
-			0 <= ipos[1] && ipos[1] < CELLSIZE &&
-			0 <= ipos[2] && ipos[2] < CELLSIZE &&
-			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
-	}
-	void setCell(const Cell &c, int ix, int iy, int iz){
-		v[ix][iy][iz] = CellInt(c.getType());
-	}
-	void initialize(){
-		float field[CELLSIZE][CELLSIZE];
-		PerlinNoise::perlin_noise<CELLSIZE>(12321, PerlinNoise::FieldAssign<CELLSIZE>(field));
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			v[ix][iy][iz] = CellInt(field[ix][iz] * 8 < iy ? Cell::Air : Cell::Grass);
-		}
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			updateAdj(ix, iy, iz);
-		}
-	}
-};
-
-static CellVolume massvolume;
+static CellVolume &massvolume = world.volume;
 
 
 
 static void initializeVolume(){
 	massvolume.initialize();
+}
+
+/// Convert from real world coords to massvolume index vector
+static Vec3i real2ind(const Vec3d &pos){
+	Vec3d tpos = pos + Vec3d(0,-1.7,0);
+	Vec3i vi(floor(tpos[0]), floor(tpos[1]), floor(tpos[2]));
+	return vi + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
+}
+
+static Vec3d ind2real(const Vec3i &ipos){
+	Vec3i tpos = ipos - Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
+	return tpos.cast<double>() - Vec3d(0,-.7,0);
 }
 
 static void display_func(){
@@ -366,19 +416,11 @@ static void display_func(){
 	else{
 		dt = TimeMeasLap(&tm);
 		TimeMeasStart(&tm);
+		if(.1 < dt)
+			dt = .1;
 	}
 
-	player.velo += Vec3d(0,-9.8,0) * dt;
 	player.think(dt);
-	Vec3i ipos = (player.pos + Vec3d(-1,-1.7,-1)).cast<int>() + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
-	if(massvolume.isSolid(ipos) || massvolume.isSolid(ipos - Vec3i(0,1,0))){
-		player.velo.clear();
-		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7;
-	}
-	else if(massvolume.isSolid(ipos + Vec3i(0,2,0))){
-		player.velo.clear();
-		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7 + 1;
-	}
 
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
 	frame++;
@@ -465,16 +507,17 @@ static void display_func(){
 }
 
 const double movespeed = .1;
+const double jumpspeed = 5.;
 const double rotatespeed = acos(0.) / 10.;
 
 static void key_func(unsigned char key, int x, int y){
 	switch(key){
-		case 'w': player.pos += movespeed * player.rot.itrans(Vec3d(0,0,1)); break;
-		case 's': player.pos += movespeed * player.rot.itrans(Vec3d(0,0,-1)); break;
-		case 'a': player.pos += movespeed * player.rot.itrans(Vec3d(-1,0,0)); break;
-		case 'd': player.pos += movespeed * player.rot.itrans(Vec3d(1,0,0)); break;
-		case 'q': player.pos += movespeed * Vec3d(0,1,0); break;
-		case 'z': player.pos += movespeed * Vec3d(0,-1,0); break;
+		case 'w': player.trymove(movespeed * Vec3d(0,0,1)); break;
+		case 's': player.trymove(movespeed * Vec3d(0,0,-1)); break;
+		case 'a': player.trymove(movespeed * Vec3d(-1,0,0)); break;
+		case 'd': player.trymove(movespeed * Vec3d(1,0,0)); break;
+		case 'q': player.trymove(jumpspeed * Vec3d(0,1,0), true); break;
+		case 'z': player.trymove(jumpspeed * Vec3d(0,-1,0), true); break;
 #if 1
 		case '4': player.py[1] += rotatespeed; player.updateRot(); break;
 		case '6': player.py[1] -= rotatespeed; player.updateRot(); break;
