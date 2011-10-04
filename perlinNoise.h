@@ -6,11 +6,15 @@ extern "C"{
 
 namespace PerlinNoise{
 
+/// \brief Callback object that receives result of perlin_noise
+///
+/// We do this because not all application needs temporary memry to store the result.
 class PerlinNoiseCallback{
 public:
 	virtual void operator()(float, int ix, int iy) = 0;
 };
 
+/// \brief Callback object that will assign noise values to float 2-d array field.
 template<int CELLSIZE>
 class FieldAssign : public PerlinNoiseCallback{
 	typedef float (&fieldType)[CELLSIZE][CELLSIZE];
@@ -22,8 +26,36 @@ public:
 	}
 };
 
+/// \brief Parameters given to perlin_noise.
+struct PerlinNoiseParams{
+	long seed;
+	int xofs, yofs;
+	double persistence;
+
+	PerlinNoiseParams(
+		long seed = 0,
+		double persistence = 0.5,
+		int xofs = 0,
+		int yofs = 0)
+		: seed(seed),
+		persistence(persistence),
+		xofs(xofs),
+		yofs(xofs)
+	{
+	}
+};
+
 template<int CELLSIZE>
-void perlin_noise(long seed, PerlinNoiseCallback &callback, int xofs = 0, int yofs = 0){
+inline void perlin_noise(long seed, PerlinNoiseCallback &callback, int xofs = 0, int yofs = 0){
+	perlin_noise<CELLSIZE>(PerlinNoiseParams(seed, 0.5, xofs, yofs), callback);
+}
+
+/// \brief Generate Perlin Noise and return it through callback.
+/// \param param Parameters to generate the noise.
+/// \param callback Callback object to receive the result.
+template<int CELLSIZE>
+void perlin_noise(const PerlinNoiseParams &param, PerlinNoiseCallback &callback){
+	double persistence = param.persistence;
 	int work[CELLSIZE][CELLSIZE];
 	int work2[CELLSIZE][CELLSIZE] = {0};
 	int maxwork2 = 0;
@@ -33,11 +65,14 @@ void perlin_noise(long seed, PerlinNoiseCallback &callback, int xofs = 0, int yo
 	// Temporarily save noise patturn for use as the source signal of fractal noise.
 	for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++){
 		struct random_sequence rs;
-		initfull_rseq(&rs, seed ^ (xi + xofs), (yi + yofs));
+		initfull_rseq(&rs, param.seed ^ (xi + param.xofs), (yi + param.yofs));
 		int base;
 		base = rseq(&rs) % 256;
 		work[xi][yi] = base;
 	}
+
+	double factor = 1.0;
+	double sumfactor = 0.0;
 
 	// Accumulate signal over octaves to produce Perlin noise.
 	for(octave = 0; (1 << octave) < CELLSIZE; octave += 1){
@@ -54,10 +89,12 @@ void perlin_noise(long seed, PerlinNoiseCallback &callback, int xofs = 0, int yo
 				* (xj ? xi % cell : (cell - xi % cell - 1)) / (double)cell
 				* (yj ? yi % cell : (cell - yi % cell - 1)) / (double)cell;
 			}
-			work2[xi][yi] += (int)sum;
+			work2[xi][yi] += (int)(sum * factor);
 			if(maxwork2 < work2[xi][yi])
 				maxwork2 = work2[xi][yi];
 		}
+		sumfactor += factor;
+		factor /= param.persistence;
 	}
 
 	// Return result
