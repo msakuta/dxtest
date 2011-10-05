@@ -1,4 +1,6 @@
 #include "perlinNoise.h"
+#include "Player.h"
+#include "World.h"
 #include <assert.h>
 #include <windows.h>
 #include <d3dx9.h>
@@ -15,6 +17,9 @@ extern "C"{
 #include <stdio.h>
 #include <time.h>
 
+
+namespace dxtest{
+
 static HWND hWndApp;
 IDirect3D9 *pd3d;
 IDirect3DDevice9 *pdev;
@@ -23,7 +28,6 @@ LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
 LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 
-const int CELLSIZE = 32;
 
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
@@ -42,121 +46,13 @@ struct TextureVertex{
 	FLOAT tu, tv;
 };
 
-class Player{
-public:
-	Player() : pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.;}
-	const Vec3d &getPos()const{return pos;}
-	const Quatd &getRot()const{return rot;}
-	void setPos(const Vec3d &apos){pos = apos;}
-	void setRot(const Quatd &arot){rot = arot;}
-	void think(double dt);
-	void updateRot(){
-		desiredRot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
-	}
-	bool trymove(const Vec3d &delta, bool setvelo = false);
-	Vec3d pos;
-	Vec3d velo;
-	Quatd rot;
-	Quatd desiredRot;
-	double py[2]; ///< Pitch and Yaw
-};
 
-class Cell{
-public:
-	enum Type{Air, Grass, Banana};
 
-	Cell(Type t = Air) : type(t){}
-	Type getType()const{return type;}
-protected:
-	enum Type type;
-};
 
-class CellVolume{
-public:
-	class CellInt : public Cell{
-	public:
-		CellInt(Type t = Air) : Cell(t), adjcents(0){}
-		int adjcents;
-	};
-
-protected:
-	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
-
-	void updateAdj(int ix, int iy, int iz){
-		v[ix][iy][iz].adjcents =
-			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
-			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
-			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
-			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
-			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
-			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
-	}
-public:
-	CellVolume(){}
-	const CellInt &operator()(int ix, int iy, int iz)const{
-		return v[ix][iy][iz];
-	}
-	bool isSolid(const Vec3i &ipos)const{
-		return
-			0 <= ipos[0] && ipos[0] < CELLSIZE &&
-			0 <= ipos[1] && ipos[1] < CELLSIZE &&
-			0 <= ipos[2] && ipos[2] < CELLSIZE &&
-			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
-	}
-	void setCell(const Cell &c, int ix, int iy, int iz){
-		v[ix][iy][iz] = CellInt(c.getType());
-	}
-	void initialize(){
-		float field[CELLSIZE][CELLSIZE];
-		PerlinNoise::perlin_noise<CELLSIZE>(PerlinNoise::PerlinNoiseParams(12321, 0.5), PerlinNoise::FieldAssign<CELLSIZE>(field));
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			v[ix][iy][iz] = CellInt(field[ix][iz] * CELLSIZE / 2 < iy ? Cell::Air : Cell::Grass);
-		}
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			updateAdj(ix, iy, iz);
-		}
-	}
-};
-
-class World{
-public:
-	CellVolume volume;
-};
-
-static Player player;
 static World world;
+static Player player(world);
 
-static Vec3i real2ind(const Vec3d &pos);
 
-void Player::think(double dt){
-	player.velo += Vec3d(0,-9.8,0) * dt;
-
-	Vec3i ipos = real2ind(player.pos);
-	if(world.volume.isSolid(ipos)/* || world.volume.isSolid(ipos - Vec3i(0,1,0))*/){
-		player.velo.clear();
-		player.pos[1] = ipos[1] - CELLSIZE / 2 + 2.7;
-	}
-/*	else if(world.volume.isSolid(ipos + Vec3i(0,1,0))){
-		player.velo.clear();
-		player.pos[1] = ipos[1] - CELLSIZE / 2 + 1.7 + 1;
-	}*/
-
-	pos += velo * dt;
-	rot = Quatd::slerp(desiredRot, rot, exp(-dt * 5.));
-}
-
-bool Player::trymove(const Vec3d &delta, bool setvelo){
-	if(setvelo){
-		velo += delta;
-		return true;
-	}
-	Vec3d dest = pos + Quatd::rotation(py[1], 0, 1, 0).itrans(delta);
-	if(!world.volume.isSolid(real2ind(dest + Vec3d(0,.5,0)))){
-		pos = dest;
-		return true;
-	}
-	return false;
-}
 
 
 static int CC = 10560;
@@ -393,18 +289,6 @@ static void initializeVolume(){
 	massvolume.initialize();
 }
 
-/// Convert from real world coords to massvolume index vector
-static Vec3i real2ind(const Vec3d &pos){
-	Vec3d tpos = pos + Vec3d(0,-1.7,0);
-	Vec3i vi(floor(tpos[0]), floor(tpos[1]), floor(tpos[2]));
-	return vi + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
-}
-
-static Vec3d ind2real(const Vec3i &ipos){
-	Vec3i tpos = ipos - Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
-	return tpos.cast<double>() - Vec3d(0,-1.7,0);
-}
-
 static void display_func(){
 	static int frame = 0;
 	static timemeas_t tm;
@@ -560,7 +444,11 @@ static LRESULT WINAPI CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, L
 	return 0;
 }
 
-int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
+}
+
+using namespace dxtest;
+
+int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	ATOM atom;
 	HWND hWnd;
 	{
@@ -616,3 +504,5 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	pd3d->Release();
 	return 0;
 }
+
+

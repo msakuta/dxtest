@@ -180,6 +180,14 @@
 				RelativePath=".\dxtest.cpp"
 				>
 			</File>
+			<File
+				RelativePath=".\Player.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\World.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="ヘッダー ファイル"
@@ -188,6 +196,14 @@
 			>
 			<File
 				RelativePath=".\perlinNoise.h"
+				>
+			</File>
+			<File
+				RelativePath=".\Player.h"
+				>
+			</File>
+			<File
+				RelativePath=".\World.h"
 				>
 			</File>
 		</Filter>
