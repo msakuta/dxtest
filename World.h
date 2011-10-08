@@ -4,7 +4,6 @@
  * \brief Header to define World class and its companion classes.
  */
 
-#include "perlinNoise.h"
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
@@ -58,16 +57,7 @@ public:
 	void setCell(const Cell &c, int ix, int iy, int iz){
 		v[ix][iy][iz] = CellInt(c.getType());
 	}
-	void initialize(){
-		float field[CELLSIZE][CELLSIZE];
-		PerlinNoise::perlin_noise<CELLSIZE>(PerlinNoise::PerlinNoiseParams(12321, 0.5), PerlinNoise::FieldAssign<CELLSIZE>(field));
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			v[ix][iy][iz] = CellInt(field[ix][iz] * CELLSIZE / 2 < iy ? Cell::Air : Cell::Grass);
-		}
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-			updateAdj(ix, iy, iz);
-		}
-	}
+	void initialize();
 };
 
 class World{

@@ -38,11 +38,11 @@ struct CUSTOMVERTEX{
 };
 
 
-const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_DIFFUSE|D3DFVF_TEX1);
+const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
 
 struct TextureVertex{
 	D3DXVECTOR3 position;
-	D3DCOLOR color;
+	D3DXVECTOR3 normal;
 	FLOAT tu, tv;
 };
 
@@ -163,47 +163,47 @@ HRESULT InitGeometry()
 
 
 	TextureVertex vertices[] = {
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 0, 0, 1), Vec4f(0, -1, 0, 0), 0, 0},
+		{Vec4f(0, 0, 1, 1), Vec4f(0, -1, 0, 0), 0, 1},
+		{Vec4f(1, 0, 1, 1), Vec4f(0, -1, 0, 0), 1, 1},
+		{Vec4f(1, 0, 1, 1), Vec4f(0, -1, 0, 0), 1, 1},
+		{Vec4f(1, 0, 0, 1), Vec4f(0, -1, 0, 0), 1, 1},
+		{Vec4f(0, 0, 0, 1), Vec4f(0, -1, 0, 0), 0, 0},
 
-		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 1, 0, 1), Vec4f(0, 1, 0, 0), 0, 0},
+		{Vec4f(1, 1, 0, 1), Vec4f(0, 1, 0, 0), 1, 0},
+		{Vec4f(1, 1, 1, 1), Vec4f(0, 1, 0, 0), 1, 1},
+		{Vec4f(1, 1, 1, 1), Vec4f(0, 1, 0, 0), 1, 1},
+		{Vec4f(0, 1, 1, 1), Vec4f(0, 1, 0, 0), 0, 1},
+		{Vec4f(0, 1, 0, 1), Vec4f(0, 1, 0, 0), 0, 0},
 
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
-		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 0, 0, 1), Vec4f(0, 0, -1, 0), 0, 0},
+		{Vec4f(1, 0, 0, 1), Vec4f(0, 0, -1, 0), 1, 0},
+		{Vec4f(1, 1, 0, 1), Vec4f(0, 0, -1, 0), 1, 1},
+		{Vec4f(1, 1, 0, 1), Vec4f(0, 0, -1, 0), 1, 1},
+		{Vec4f(0, 1, 0, 1), Vec4f(0, 0, -1, 0), 0, 1},
+		{Vec4f(0, 0, 0, 1), Vec4f(0, 0, -1, 0), 0, 0},
 
-		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
-		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 0, 1, 1), Vec4f(0, 0, 1, 0), 0, 0},
+		{Vec4f(0, 1, 1, 1), Vec4f(0, 0, 1, 0), 0, 1},
+		{Vec4f(1, 1, 1, 1), Vec4f(0, 0, 1, 0), 1, 1},
+		{Vec4f(1, 1, 1, 1), Vec4f(0, 0, 1, 0), 1, 1},
+		{Vec4f(1, 0, 1, 1), Vec4f(0, 0, 1, 0), 1, 0},
+		{Vec4f(0, 0, 1, 1), Vec4f(0, 0, 1, 0), 0, 0},
 
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(0, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
-		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(0, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(0, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(0, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(0, 0, 0, 1), Vec4f(-1, 0, 0, 0), 0, 0},
+		{Vec4f(0, 1, 0, 1), Vec4f(-1, 0, 0, 0), 1, 0},
+		{Vec4f(0, 1, 1, 1), Vec4f(-1, 0, 0, 0), 1, 1},
+		{Vec4f(0, 1, 1, 1), Vec4f(-1, 0, 0, 0), 1, 1},
+		{Vec4f(0, 0, 1, 1), Vec4f(-1, 0, 0, 0), 0, 1},
+		{Vec4f(0, 0, 0, 1), Vec4f(-1, 0, 0, 0), 0, 0},
 
-		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
-		{Vec4f(1, 0, 1, 1), D3DCOLOR_XRGB(255, 127, 127), 0, 1},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 1, 1, 1), D3DCOLOR_XRGB(127, 255, 127), 1, 1},
-		{Vec4f(1, 1, 0, 1), D3DCOLOR_XRGB(255, 255, 255), 1, 0},
-		{Vec4f(1, 0, 0, 1), D3DCOLOR_XRGB(255, 255, 127), 0, 0},
+		{Vec4f(1, 0, 0, 1), Vec4f(1, 0, 0, 0), 0, 0},
+		{Vec4f(1, 0, 1, 1), Vec4f(1, 0, 0, 0), 0, 1},
+		{Vec4f(1, 1, 1, 1), Vec4f(1, 0, 0, 0), 1, 1},
+		{Vec4f(1, 1, 1, 1), Vec4f(1, 0, 0, 0), 1, 1},
+		{Vec4f(1, 1, 0, 1), Vec4f(1, 0, 0, 0), 1, 0},
+		{Vec4f(1, 0, 0, 1), Vec4f(1, 0, 0, 0), 0, 0},
 	};
 
     if( FAILED( pdev->CreateVertexBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
@@ -257,7 +257,40 @@ VOID SetupMatrices()
     D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, 1.0f, 1.0f, 100.0f );
     pdev->SetTransform( D3DTS_PROJECTION, &matProj );
 
-	pdev->LightEnable(0, FALSE);
+	// Set up material
+	D3DMATERIAL9 mtrl;
+	ZeroMemory( &mtrl, sizeof(mtrl) );
+	mtrl.Diffuse.r = mtrl.Ambient.r = 1.0f;
+	mtrl.Diffuse.g = mtrl.Ambient.g = 1.0f;
+	mtrl.Diffuse.b = mtrl.Ambient.b = 1.0f;
+	mtrl.Diffuse.a = mtrl.Ambient.a = 1.0f;
+	pdev->SetMaterial( &mtrl );
+
+	// Set up light
+	D3DLIGHT9 light;
+	ZeroMemory( &light, sizeof(light) );
+	light.Type = D3DLIGHT_DIRECTIONAL;
+	light.Diffuse.r = 1.0f;
+	light.Diffuse.g = 0.9f;
+	light.Diffuse.b = 0.9f;
+	light.Diffuse.a = 1.0f;
+	light.Ambient.r = .3f;
+	light.Ambient.g = .4f;
+	light.Ambient.b = .4f;
+	light.Ambient.a = .0f;
+	D3DXVECTOR3 vecDir = D3DXVECTOR3(-cosf(55/*timeGetTime()*//360.0f),
+                     -2.0f,
+                     -sinf(55/*timeGetTime()*//360.0f) );
+	D3DXVec3Normalize( (D3DXVECTOR3*)&light.Direction, &vecDir );
+	light.Range = 1000.0f;
+	light.Phi = .5 * D3DX_PI;
+	light.Theta = .8 * D3DX_PI;
+	pdev->SetLight(0, &light);
+	pdev->LightEnable(0, TRUE);
+
+	pdev->SetRenderState(D3DRS_LIGHTING, TRUE);
+	pdev->SetRenderState( D3DRS_AMBIENT, 0x00202020 );
+
 }
 
 void RotateModel(){
@@ -306,7 +339,7 @@ static void display_func(){
 
 	player.think(dt);
 
-	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(frame / 16, frame / 3, frame), 1.0f, 0);
+	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 	frame++;
 
 
@@ -325,11 +358,11 @@ static void display_func(){
 		D3DXMatrixIdentity(&matWorld);
 	    pdev->SetTransform( D3DTS_WORLD, &matWorld );
 
-		pdev->SetTexture( 0, g_pTexture);
+/*		pdev->SetTexture( 0, g_pTexture);
 		pdev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 		pdev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
         pdev->SetTextureStageState( 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE );
-        pdev->SetTextureStageState( 0, D3DTSS_ALPHAOP, D3DTOP_DISABLE );
+        pdev->SetTextureStageState( 0, D3DTSS_ALPHAOP, D3DTOP_DISABLE );*/
 
 		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
         pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
