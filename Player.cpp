@@ -6,9 +6,15 @@ namespace dxtest{
 void Player::think(double dt){
 	velo += Vec3d(0,-9.8,0) * dt;
 
+	// Initialize with false always
+	floorTouched = false;
+
 	Vec3i ipos = world.real2ind(pos);
 	if(world.volume.isSolid(ipos)/* || world.volume.isSolid(ipos - Vec3i(0,1,0))*/){
-		velo.clear();
+		if(velo[1] < 0){
+			velo.clear();
+			floorTouched = true; // If you have velocity upwards, you are probably not on feet.
+		}
 		pos[1] = ipos[1] - CELLSIZE / 2 + 2.7;
 	}
 /*	else if(world.volume.isSolid(ipos + Vec3i(0,1,0))){

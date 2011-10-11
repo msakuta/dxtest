@@ -40,6 +40,7 @@ public:
 	Quatd rot;
 	Quatd desiredRot;
 	double py[2]; ///< Pitch and Yaw
+	bool floorTouched;
 };
 
 }

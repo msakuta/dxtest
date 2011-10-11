@@ -54,6 +54,10 @@ static Player player(world);
 
 
 
+const double movespeed = 2.; ///< Walk speed [meters per second]
+const double jumpspeed = 4.; ///< Speed set vertically when jumping [meters per second]
+const double rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
+
 
 static int CC = 10560;
 static suf_t *suf;
@@ -337,6 +341,38 @@ static void display_func(){
 			dt = .1;
 	}
 
+	// GetKeyState() doesn't care which window is active, so we must manually check it.
+	if(GetActiveWindow() == hWndApp){
+		
+		// Linear movement keys
+		if(GetKeyState('W') >> 8)
+			player.trymove(dt * movespeed * Vec3d(0,0,1));
+		if(GetKeyState('S') >> 8)
+			player.trymove(dt * movespeed * Vec3d(0,0,-1));
+		if(GetKeyState('A') >> 8)
+			player.trymove(dt * movespeed * Vec3d(-1,0,0));
+		if(GetKeyState('D') >> 8)
+			player.trymove(dt * movespeed * Vec3d(1,0,0));
+
+		// You cannot jump upward without feet on ground. What about jump downward?
+		if(player.floorTouched){
+			if(GetKeyState('Q') >> 8)
+				player.trymove(jumpspeed * Vec3d(0,1,0), true);
+			if(GetKeyState('Z') >> 8)
+				player.trymove(jumpspeed * Vec3d(0,-1,0), true);
+		}
+
+		// Rotation keys
+		if(GetKeyState(VK_NUMPAD4) >> 8)
+			player.py[1] += dt * rotatespeed, player.updateRot();
+		if(GetKeyState(VK_NUMPAD6) >> 8)
+			player.py[1] -= dt * rotatespeed, player.updateRot();
+		if(GetKeyState(VK_NUMPAD8) >> 8)
+			player.py[0] += dt * rotatespeed, player.updateRot();
+		if(GetKeyState(VK_NUMPAD2) >> 8)
+			player.py[0] -= dt * rotatespeed, player.updateRot();
+	}
+
 	player.think(dt);
 
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
@@ -423,23 +459,19 @@ static void display_func(){
 //	if(hr == D3DERR_DEVICELOST)
 }
 
-const double movespeed = .1;
-const double jumpspeed = 5.;
-const double rotatespeed = acos(0.) / 10.;
-
 static void key_func(unsigned char key, int x, int y){
 	switch(key){
-		case 'w': player.trymove(movespeed * Vec3d(0,0,1)); break;
-		case 's': player.trymove(movespeed * Vec3d(0,0,-1)); break;
-		case 'a': player.trymove(movespeed * Vec3d(-1,0,0)); break;
-		case 'd': player.trymove(movespeed * Vec3d(1,0,0)); break;
-		case 'q': player.trymove(jumpspeed * Vec3d(0,1,0), true); break;
-		case 'z': player.trymove(jumpspeed * Vec3d(0,-1,0), true); break;
+//		case 'w': player.trymove(movespeed * Vec3d(0,0,1)); break;
+//		case 's': player.trymove(movespeed * Vec3d(0,0,-1)); break;
+//		case 'a': player.trymove(movespeed * Vec3d(-1,0,0)); break;
+//		case 'd': player.trymove(movespeed * Vec3d(1,0,0)); break;
+//		case 'q': player.trymove(jumpspeed * Vec3d(0,1,0), true); break;
+//		case 'z': player.trymove(jumpspeed * Vec3d(0,-1,0), true); break;
 #if 1
-		case '4': player.py[1] += rotatespeed; player.updateRot(); break;
-		case '6': player.py[1] -= rotatespeed; player.updateRot(); break;
-		case '8': player.py[0] += rotatespeed; player.updateRot(); break;
-		case '2': player.py[0] -= rotatespeed; player.updateRot(); break;
+//		case '4': player.py[1] += rotatespeed; player.updateRot(); break;
+//		case '6': player.py[1] -= rotatespeed; player.updateRot(); break;
+//		case '8': player.py[0] += rotatespeed; player.updateRot(); break;
+//		case '2': player.py[0] -= rotatespeed; player.updateRot(); break;
 #else
 		case '4': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, 1, 0))); break;
 		case '6': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, -1, 0))); break;
