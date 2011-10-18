@@ -1,5 +1,8 @@
 #include "Player.h"
 #include "World.h"
+/** \file
+ * \brief Implements Player class
+ */
 
 namespace dxtest{
 

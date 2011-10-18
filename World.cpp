@@ -4,6 +4,9 @@
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
 #include <math.h>
+/** \file
+ * \brief Implements World class.
+ */
 
 /// Initialize the volume.
 void dxtest::CellVolume::initialize(){

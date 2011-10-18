@@ -1,5 +1,8 @@
 #ifndef PERLINNOISE_H
 #define PERLINNOISE_H
+/** \file
+ * \brief Defines Perlin Noise generator classes and functions.
+ */
 
 #include <stdio.h>
 extern "C"{

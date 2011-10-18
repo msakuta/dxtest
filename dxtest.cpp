@@ -16,6 +16,9 @@ extern "C"{
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
+/** \file
+ *  \brief The main source
+ */
 
 
 namespace dxtest{
@@ -28,7 +31,8 @@ LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
 LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 
-
+const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
+const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
@@ -112,7 +116,7 @@ HRESULT InitGeometry()
 		return E_FAIL;
     }*/
 
-
+#if 0
 	const char *fname = "../gltestplus/models/interceptor0.bin";
 	{
 		suf_t *ret;
@@ -129,11 +133,13 @@ HRESULT InitGeometry()
 		fclose(fp);
 		suf = RelocateSUF(ret);
 	}
+#endif
 
 	CUSTOMVERTEX *g_Vertices = NULL;
 	CC = 0;
 
 //	double scale = 1., offset = 200.;
+#if 0
 	double scale = 2e-2, offset = 0.;
 	for(int i = 0; i < suf->np; i++) for(int j = 2; j < suf->p[i]->p.n; j++){
 		for(int k = 0; k < 3; k++){
@@ -164,7 +170,9 @@ HRESULT InitGeometry()
     g_pVB->Unlock();
 
 	free(g_Vertices);
-
+#else
+    VOID* pVertices;
+#endif
 
 	TextureVertex vertices[] = {
 		{Vec4f(0, 0, 0, 1), Vec4f(0, -1, 0, 0), 0, 0},
@@ -258,7 +266,7 @@ VOID SetupMatrices()
     // the aspect ratio, and the near and far clipping planes (which define at
     // what distances geometry should be no longer be rendered).
     D3DXMATRIXA16 matProj;
-    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, 1.0f, 1.0f, 100.0f );
+    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, (double)windowWidth / windowHeight, 1.0f, 100.0f );
     pdev->SetTransform( D3DTS_PROJECTION, &matProj );
 
 	// Set up material
@@ -518,7 +526,7 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	HWND hWnd;
 	{
 		HINSTANCE hInst;
-		RECT rc = {100,100,100+1024,100+768};
+		RECT rc = {100,100,100+windowWidth,100+windowHeight};
 /*		RECT rc = {0,0,0+512,0+384};*/
 		hInst = GetModuleHandle(NULL);
 
