@@ -59,7 +59,7 @@ static Player player(world);
 
 
 const double movespeed = 2.; ///< Walk speed [meters per second]
-const double jumpspeed = 4.; ///< Speed set vertically when jumping [meters per second]
+const double jumpspeed = 5.; ///< Speed set vertically when jumping [meters per second]
 const double rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
 
@@ -266,7 +266,7 @@ VOID SetupMatrices()
     // the aspect ratio, and the near and far clipping planes (which define at
     // what distances geometry should be no longer be rendered).
     D3DXMATRIXA16 matProj;
-    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, (double)windowWidth / windowHeight, 1.0f, 100.0f );
+    D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, (double)windowWidth / windowHeight, .30f, 100.0f );
     pdev->SetTransform( D3DTS_PROJECTION, &matProj );
 
 	// Set up material
@@ -364,7 +364,7 @@ static void display_func(){
 
 		// You cannot jump upward without feet on ground. What about jump downward?
 		if(player.floorTouched){
-			if(GetKeyState('Q') >> 8)
+			if(GetKeyState(VK_SPACE) >> 8)
 				player.trymove(jumpspeed * Vec3d(0,1,0), true);
 			if(GetKeyState('Z') >> 8)
 				player.trymove(jumpspeed * Vec3d(0,-1,0), true);

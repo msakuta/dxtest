@@ -21,6 +21,9 @@ namespace dxtest{
 
 class World;
 
+/// <summary>
+/// The Player's class, maintaining camera's position and velocity, etc.
+/// </summary>
 class Player{
 public:
 	Player(World &world) : world(world), pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.;}
@@ -33,6 +36,26 @@ public:
 		desiredRot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
 	}
 	bool trymove(const Vec3d &delta, bool setvelo = false);
+
+	/// <summary>
+	/// Half-size of the Player along X axis.
+	/// </summary>
+	static const double boundWidth;
+
+	/// <summary>
+	/// Half-size of the Player along Z axis.
+	/// </summary>
+	static const double boundLength;
+
+	/// <summary>
+	/// Full-size of the Player along Z axis.
+	/// </summary>
+	static const double boundHeight;
+
+	/// <summary>
+	/// Height of eyes measured from feet.
+	/// </summary>
+	static const double eyeHeight;
 
 	World &world;
 	Vec3d pos;
