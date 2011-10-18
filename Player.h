@@ -32,6 +32,7 @@ public:
 	void setPos(const Vec3d &apos){pos = apos;}
 	void setRot(const Quatd &arot){rot = arot;}
 	void think(double dt);
+	void keyinput(double dt);
 	void updateRot(){
 		desiredRot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
 	}
@@ -56,6 +57,15 @@ public:
 	/// Height of eyes measured from feet.
 	/// </summary>
 	static const double eyeHeight;
+
+	static const double movespeed; ///< Walk speed [meters per second]
+	static const double jumpspeed; ///< Speed set vertically when jumping [meters per second]
+	static const double rotatespeed; ///< pi / 2, means it takes 4 seconds to look all the way around.
+
+	BYTE oldKeys[256];
+
+	enum MoveMode{ Walk, Fly, Ghost} moveMode;
+	bool isFlying()const{return moveMode == Fly || moveMode == Ghost;}
 
 	World &world;
 	Vec3d pos;

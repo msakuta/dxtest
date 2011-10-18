@@ -58,9 +58,6 @@ static Player player(world);
 
 
 
-const double movespeed = 2.; ///< Walk speed [meters per second]
-const double jumpspeed = 5.; ///< Speed set vertically when jumping [meters per second]
-const double rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
 
 static int CC = 10560;
@@ -351,34 +348,7 @@ static void display_func(){
 
 	// GetKeyState() doesn't care which window is active, so we must manually check it.
 	if(GetActiveWindow() == hWndApp){
-		
-		// Linear movement keys
-		if(GetKeyState('W') >> 8)
-			player.trymove(dt * movespeed * Vec3d(0,0,1));
-		if(GetKeyState('S') >> 8)
-			player.trymove(dt * movespeed * Vec3d(0,0,-1));
-		if(GetKeyState('A') >> 8)
-			player.trymove(dt * movespeed * Vec3d(-1,0,0));
-		if(GetKeyState('D') >> 8)
-			player.trymove(dt * movespeed * Vec3d(1,0,0));
-
-		// You cannot jump upward without feet on ground. What about jump downward?
-		if(player.floorTouched){
-			if(GetKeyState(VK_SPACE) >> 8)
-				player.trymove(jumpspeed * Vec3d(0,1,0), true);
-			if(GetKeyState('Z') >> 8)
-				player.trymove(jumpspeed * Vec3d(0,-1,0), true);
-		}
-
-		// Rotation keys
-		if(GetKeyState(VK_NUMPAD4) >> 8)
-			player.py[1] += dt * rotatespeed, player.updateRot();
-		if(GetKeyState(VK_NUMPAD6) >> 8)
-			player.py[1] -= dt * rotatespeed, player.updateRot();
-		if(GetKeyState(VK_NUMPAD8) >> 8)
-			player.py[0] += dt * rotatespeed, player.updateRot();
-		if(GetKeyState(VK_NUMPAD2) >> 8)
-			player.py[0] -= dt * rotatespeed, player.updateRot();
+		player.keyinput(dt);
 	}
 
 	player.think(dt);
