@@ -34,6 +34,8 @@ LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
+const int maxViewDistance = 32;
+
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
 struct CUSTOMVERTEX{
@@ -52,9 +54,9 @@ struct TextureVertex{
 
 
 
-
-static World world;
-static Player player(world);
+static Game game;
+static World world(game);
+static Player player(game);
 
 
 
@@ -323,12 +325,10 @@ void RotateModel(){
 
 
 
-static CellVolume &massvolume = world.volume;
-
 
 
 static void initializeVolume(){
-	massvolume.initialize();
+	world.initialize();
 }
 
 static void display_func(){
@@ -352,6 +352,7 @@ static void display_func(){
 	}
 
 	player.think(dt);
+	world.think(dt);
 
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 	frame++;
@@ -381,18 +382,54 @@ static void display_func(){
 		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
         pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
 
-		for(int ix = 0; ix < CELLSIZE; ix++){
-			for(int iy = 0; iy < CELLSIZE; iy++){
-				for(int iz = 0; iz < CELLSIZE; iz++){
-					if(massvolume(ix, iy, iz).getType() != Cell::Air && massvolume(ix, iy, iz).adjcents < 6){
-						bool x0 = massvolume((ix - 1 + CELLSIZE) % CELLSIZE, iy, iz).getType() != Cell::Air;
-						bool x1 = massvolume((ix + 1) % CELLSIZE, iy, iz).getType() != Cell::Air;
-						bool y0 = massvolume(ix, (iy - 1 + CELLSIZE) % CELLSIZE, iz).getType() != Cell::Air;
-						bool y1 = massvolume(ix, (iy + 1) % CELLSIZE, iz).getType() != Cell::Air;
-						bool z0 = massvolume(ix, iy, (iz - 1 + CELLSIZE) % CELLSIZE).getType() != Cell::Air;
-						bool z1 = massvolume(ix, iy, (iz + 1) % CELLSIZE).getType() != Cell::Air;
-						pdev->SetTexture( 0, massvolume(ix, iy, iz).getType() == Cell::Grass ? g_pTexture : g_pTexture2);
-						D3DXMatrixTranslation(&matWorld, (ix - CELLSIZE / 2) * 1, (iy - CELLSIZE / 2) * 1, (iz - CELLSIZE / 2) * 1);
+		const Vec3i inf = World::real2ind(player.getPos());
+
+		for(World::VolumeMap::iterator it = world.volume.begin(); it != world.volume.end(); it++){
+			const Vec3i &key = it->first;
+			CellVolume &cv = it->second;
+
+			// Cull too far CellVolumes
+			if ((key[0] + 1) * CELLSIZE + maxViewDistance < inf[0])
+				continue;
+			if (inf[0] < key[0] * CELLSIZE - maxViewDistance)
+				continue;
+			if ((key[1] + 1) * CELLSIZE + maxViewDistance < inf[1])
+				continue;
+			if (inf[1] < key[1] * CELLSIZE - maxViewDistance)
+				continue;
+			if ((key[2] + 1) * CELLSIZE + maxViewDistance < inf[2])
+				continue;
+			if (inf[2] < key[2] * CELLSIZE - maxViewDistance)
+				continue;
+
+			for(int ix = 0; ix < CELLSIZE; ix++){
+				for(int iy = 0; iy < CELLSIZE; iy++){
+					for(int iz = 0; iz < CELLSIZE; iz++){
+
+						// Culling for Cells
+						if (cv(ix, iy, iz).getType() == Cell::Air)
+							continue;
+						if (maxViewDistance < abs(ix + it->first[0] * CELLSIZE - inf[0]))
+							continue;
+						if (maxViewDistance < abs(iy + it->first[1] * CELLSIZE - inf[1]))
+							continue;
+						if (maxViewDistance < abs(iz + it->first[2] * CELLSIZE - inf[2]))
+							continue;
+
+						if(6 <= cv(ix, iy, iz).adjcents)
+							continue;
+
+						bool x0 = cv(ix - 1, iy, iz).getType() != Cell::Air;
+						bool x1 = cv(ix + 1, iy, iz).getType() != Cell::Air;
+						bool y0 = cv(ix, iy - 1, iz).getType() != Cell::Air;
+						bool y1 = cv(ix, iy + 1, iz).getType() != Cell::Air;
+						bool z0 = cv(ix, iy, iz - 1).getType() != Cell::Air;
+						bool z1 = cv(ix, iy, iz + 1).getType() != Cell::Air;
+						pdev->SetTexture( 0, cv(ix, iy, iz).getType() == Cell::Grass ? g_pTexture : g_pTexture2);
+						D3DXMatrixTranslation(&matWorld,
+							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2) * 1,
+							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2) * 1,
+							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2) * 1);
 						pdev->SetTransform(D3DTS_WORLD, &matWorld);
 						if(!x0 && !x1 && !y0 && !y1)
 							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );

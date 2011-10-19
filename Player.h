@@ -4,6 +4,7 @@
  * \brief Header to define Player class.
  */
 
+#include "World.h"
 #include <assert.h>
 #include <windows.h>
 #include <d3dx9.h>
@@ -19,14 +20,13 @@ extern "C"{
 
 namespace dxtest{
 
-class World;
 
 /// <summary>
 /// The Player's class, maintaining camera's position and velocity, etc.
 /// </summary>
 class Player{
 public:
-	Player(World &world) : world(world), pos(0, 0, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.;}
+	Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.; game.player = this;}
 	const Vec3d &getPos()const{return pos;}
 	const Quatd &getRot()const{return rot;}
 	void setPos(const Vec3d &apos){pos = apos;}
@@ -67,7 +67,7 @@ public:
 	enum MoveMode{ Walk, Fly, Ghost} moveMode;
 	bool isFlying()const{return moveMode == Fly || moveMode == Ghost;}
 
-	World &world;
+	Game &game;
 	Vec3d pos;
 	Vec3d velo;
 	Quatd rot;

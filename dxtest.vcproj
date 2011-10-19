@@ -203,6 +203,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\SignModulo.h"
+				>
+			</File>
+			<File
 				RelativePath=".\World.h"
 				>
 			</File>

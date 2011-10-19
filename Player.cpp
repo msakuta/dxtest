@@ -23,7 +23,7 @@ void Player::think(double dt){
 	// Initialize with false always
 	floorTouched = false;
 
-	Vec3i ipos = world.real2ind(pos);
+	Vec3i ipos = game.world->real2ind(pos);
 
 //	pos += velo * dt;
 	trymove(velo * dt);
@@ -96,7 +96,7 @@ bool Player::trymove(const Vec3d &delta, bool setvelo){
 		for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++){
 			// Position to check collision with the walls
 			Vec3d hitcheck(dest[0] + (ix * 2 - 1) * boundWidth, dest[1] - eyeHeight, dest[2] + (iz * 2 - 1) * boundLength);
-			if(world.volume.isSolid(world.real2ind(hitcheck))){
+			if(game.world->isSolid(game.world->real2ind(hitcheck))){
 				// Clear velocity component along delta direction
 				double vad = velo.sp(worldDeltaDir);
 				if(0 < vad){

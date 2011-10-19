@@ -12,6 +12,7 @@ extern "C"{
 }
 #include <clib/random/tinymt32.h>
 #include <cpplib/RandomSequence.h>
+#include "SignModulo.h"
 
 namespace PerlinNoise{
 
@@ -38,16 +39,19 @@ public:
 /// \brief Parameters given to perlin_noise.
 struct PerlinNoiseParams{
 	long seed;
+	long octaves;
 	int xofs, yofs;
 	double persistence;
 
 	PerlinNoiseParams(
 		long seed = 0,
 		double persistence = 0.5,
+		long octaves = 4,
 		int xofs = 0,
 		int yofs = 0)
 		: seed(seed),
 		persistence(persistence),
+		octaves(octaves),
 		xofs(xofs),
 		yofs(xofs)
 	{
@@ -64,75 +68,45 @@ inline void perlin_noise(long seed, PerlinNoiseCallback &callback, int xofs = 0,
 /// \param callback Callback object to receive the result.
 template<int CELLSIZE>
 void perlin_noise(const PerlinNoiseParams &param, PerlinNoiseCallback &callback){
+	const int baseMax = 255;
+
+	struct Random{
+		RandomSequence rs;
+		Random(long seed, long x, long y) : rs(seed ^ x, y){}
+		unsigned long next(){
+			unsigned long u = rs.next();
+			return (u >> 8) & 0xf0 + (u & 0xf);
+		}
+	};
+
 	double persistence = param.persistence;
-	int work[CELLSIZE][CELLSIZE];
 	int work2[CELLSIZE][CELLSIZE] = {0};
-	int maxwork2 = 0;
 	int octave;
 	int xi, yi;
-
-	// Temporarily save noise patturn for use as the source signal of fractal noise.
-	timemeas_t tm;
-	TimeMeasStart(&tm);
-//	init_genrand(param.seed);
-//	TINYMT32_T tmt;
-//	tinymt32_init(&tmt, param.seed);
-	for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++){
-//		unsigned long seeds[3] = {param.seed, (xi + param.xofs), (yi + param.yofs)};
-//		init_by_array(seeds, 3);
-//		tinymt32_init(&tmt, param.seed ^ (xi + param.xofs) + (yi + param.yofs) * 1947);
-		RandomSequence rs(param.seed ^ (xi + param.xofs), (yi + param.yofs));
-//		unsigned long x = 123456789 * xi + 315892 * param.seed;
-//		unsigned long y = 362436069 * yi;
-//		unsigned long z = 521288629;
-//		unsigned long w = 88675123 ^ param.seed;
-/*		for(int j = 0; j < 5; j++){
-			unsigned long long r = 4294966893ull * (uint64_t(x) + y);
-			x = uint32_t(r & 0xFFFFFFFF);
-			y = r >> 32;
-		}*/
-/*		for(int j = 0; j < 3; j++){
-			unsigned long t = x ^ (x << 11);
-			x = y;
-			y = w;
-			w = (w ^ (w >> 19)) ^ (t ^ (t >> 8));
-		}*/
-//		srand(x + y * 2456 + w * 521);
-		int base;
-//		base = genrand_int32() % 256;
-//		base = tinymt32_generate_uint32(&tmt) % 256;
-		base = rs.next() % 256;
-//		base = (x + y + z + w) % 256;
-//		rand();
-//		base = rand() % 256;
-//		base = x % 256;
-		work[xi][yi] = base;
-	}
-	char buf[128];
-	sprintf(buf, "%g\n", TimeMeasLap(&tm));
-	OutputDebugStringA(buf);
 
 	double factor = 1.0;
 	double sumfactor = 0.0;
 
 	// Accumulate signal over octaves to produce Perlin noise.
-	for(octave = 0; (1 << octave) < CELLSIZE; octave += 1){
+	for(octave = 0; octave < param.octaves; octave += 1){
 		int cell = 1 << octave;
 		if(octave == 0){
 			for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++)
-				work2[xi][yi] = work[xi][yi];
+				work2[xi][yi] = Random(param.seed, (xi + param.xofs), (yi + param.yofs)).next();
 		}
 		else for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++){
 			int xj, yj;
 			double sum = 0;
+			int xsm = SignModulo(xi + param.xofs, cell);
+			int ysm = SignModulo(yi + param.yofs, cell);
+			int xsd = SignDiv(xi + param.xofs, cell);
+			int ysd = SignDiv(yi + param.yofs, cell);
 			for(xj = 0; xj <= 1; xj++) for(yj = 0; yj <= 1; yj++){
-				sum += (double)work[xi / cell + xj][yi / cell + yj]
-				* (xj ? xi % cell : (cell - xi % cell - 1)) / (double)cell
-				* (yj ? yi % cell : (cell - yi % cell - 1)) / (double)cell;
+				sum += (double)(Random(param.seed, (xsd + xj), (ysd + yj)).next())
+				* (xj ? xsm : (cell - xsm - 1)) / (double)cell
+				* (yj ? ysm : (cell - ysm - 1)) / (double)cell;
 			}
 			work2[xi][yi] += (int)(sum * factor);
-			if(maxwork2 < work2[xi][yi])
-				maxwork2 = work2[xi][yi];
 		}
 		sumfactor += factor;
 		factor /= param.persistence;
@@ -140,7 +114,7 @@ void perlin_noise(const PerlinNoiseParams &param, PerlinNoiseCallback &callback)
 
 	// Return result
 	for(int xi = 0; xi < CELLSIZE; xi++) for(int yi = 0; yi < CELLSIZE; yi++){
-		callback((float)work2[xi][yi] / maxwork2, xi, yi);
+		callback((double)work2[xi][yi] / baseMax / sumfactor, xi, yi);
 	}
 }
 
