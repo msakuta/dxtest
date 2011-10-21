@@ -11,6 +11,7 @@ const double Player::boundLength = 0.4;
 const double Player::boundHeight = 1.7;
 const double Player::eyeHeight = 1.5;
 const double Player::movespeed = 2.; ///< Walk speed [meters per second]
+const double Player::runspeed = 5.;
 const double Player::jumpspeed = 5.; ///< Speed set vertically when jumping [meters per second]
 const double Player::rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
@@ -31,9 +32,11 @@ void Player::think(double dt){
 }
 
 void Player::keyinput(double dt){
+	bool shift = GetKeyState(VK_SHIFT) >> 8;
+
 	// Linear movement keys
 	if(GetKeyState('W') >> 8)
-		trymove(dt * movespeed * Vec3d(0,0,1));
+		trymove(dt * (shift ? runspeed : movespeed) * Vec3d(0,0,1));
 	if(GetKeyState('S') >> 8)
 		trymove(dt * movespeed * Vec3d(0,0,-1));
 	if(GetKeyState('A') >> 8)

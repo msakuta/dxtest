@@ -1,5 +1,8 @@
 #ifndef SIGNMODULO_H
 #define SIGNMODULO_H
+/** \file
+ * \brief Defines SignModulo and SignDiv functions. Really should be some library.
+ */
 
 /// <summary>
 /// Returns remainder of divison of integers that never be negative.

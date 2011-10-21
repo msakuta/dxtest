@@ -59,6 +59,7 @@ public:
 	static const double eyeHeight;
 
 	static const double movespeed; ///< Walk speed [meters per second]
+	static const double runspeed; ///< Run speed [meters per second]
 	static const double jumpspeed; ///< Speed set vertically when jumping [meters per second]
 	static const double rotatespeed; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
