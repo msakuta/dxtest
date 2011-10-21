@@ -14,7 +14,7 @@ namespace dxtest{
 
 const int CELLSIZE = 16;
 
-
+class World;
 
 class Cell{
 public:
@@ -37,6 +37,8 @@ public:
 	static const CellInt v0;
 
 protected:
+	World *world;
+	Vec3i index;
 	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
 
 	void updateAdj(int ix, int iy, int iz){
@@ -49,14 +51,8 @@ protected:
 			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
 	}
 public:
-	CellVolume(){}
-	const CellInt &operator()(int ix, int iy, int iz)const{
-		return
-			0 <= ix && ix < CELLSIZE &&
-			0 <= iy && iy < CELLSIZE &&
-			0 <= iz && iz < CELLSIZE 
-			? v[ix][iy][iz] : v0;
-	}
+	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind){}
+	const CellInt &operator()(int ix, int iy, int iz)const;
 	bool isSolid(const Vec3i &ipos)const{
 		return
 			0 <= ipos[0] && ipos[0] < CELLSIZE &&
@@ -135,7 +131,50 @@ public:
 	World *world;
 };
 
-
+/// <summary>Returns Cell object indexed by coordinates in this CellVolume.</summary>
+/// <remarks>
+/// If the indices reach border of the CellVolume, it will recursively retrieve foreign Cells.
+///
+/// Note that even if two or more indices are out of range, this function will find the correct Cell
+/// by recursively calling itself in turn with each axes.
+/// But what's the difference between this and World::cell(), you may ask. That's the key for the next
+/// step of optimization.
+/// </remarks>
+/// <param name="ix">Index along X axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
+/// <param name="iy">Index along Y axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
+/// <param name="iz">Index along Z axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
+/// <returns>A CellInt object at ix, iy, iz</returns>
+inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)const{
+	if(ix < 0 || CELLSIZE <= ix){
+		Vec3i ci(index[0] + SignDiv(ix, CELLSIZE), index[1], index[2]);
+		World::VolumeMap::iterator it = world->volume.find(ci);
+		if(it != world->volume.end()){
+			const CellVolume &cv = it->second;
+			return cv(SignModulo(ix, CELLSIZE), iy, iz);
+		}
+	}
+	if(iy < 0 || CELLSIZE <= iy){
+		Vec3i ci(index[0], index[1] + SignDiv(iy, CELLSIZE), index[2]);
+		World::VolumeMap::iterator it = world->volume.find(ci);
+		if(it != world->volume.end()){
+			const CellVolume &cv = it->second;
+			return cv(ix, SignModulo(iy, CELLSIZE), iz);
+		}
+	}
+	if(iz < 0 || CELLSIZE <= iz){
+		Vec3i ci(index[0], index[1], index[2] + SignDiv(iz, CELLSIZE));
+		World::VolumeMap::iterator it = world->volume.find(ci);
+		if(it != world->volume.end()){
+			const CellVolume &cv = it->second;
+			return cv(ix, iy, SignModulo(iz, CELLSIZE));
+		}
+	}
+	return
+		0 <= ix && ix < CELLSIZE &&
+		0 <= iy && iy < CELLSIZE &&
+		0 <= iz && iz < CELLSIZE 
+		? v[ix][iy][iz] : v0;
+}
 
 inline World::World(Game &agame) : game(agame), volume(operator<){game.world = this;}
 

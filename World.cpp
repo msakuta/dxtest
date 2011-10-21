@@ -36,7 +36,7 @@ void dxtest::CellVolume::initialize(const Vec3i &ci){
 
 void dxtest::World::initialize(){
 	Vec3i zero(0, 0, 0);
-	volume[zero] = CellVolume();
+	volume[zero] = CellVolume(this, zero);
 	volume[zero].initialize(zero);
 }
 
@@ -70,6 +70,7 @@ void dxtest::World::think(double dt){
 			SignDiv((i[1] + (2 * iy - 1) * CELLSIZE / 2), CELLSIZE),
 			SignDiv((i[2] + iz * CELLSIZE), CELLSIZE));
 		if(volume.find(ci) == volume.end()){
+			volume[ci] = CellVolume(this, ci);
 			CellVolume &cv = volume[ci];
 			cv.initialize(ci);
 		}

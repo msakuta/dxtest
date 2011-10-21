@@ -34,7 +34,7 @@ LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
-const int maxViewDistance = 32;
+const int maxViewDistance = CELLSIZE * 2;
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
@@ -406,7 +406,7 @@ static void display_func(){
 				for(int iy = 0; iy < CELLSIZE; iy++){
 					for(int iz = 0; iz < CELLSIZE; iz++){
 
-						// Culling for Cells
+						// Cull too far Cells
 						if (cv(ix, iy, iz).getType() == Cell::Air)
 							continue;
 						if (maxViewDistance < abs(ix + it->first[0] * CELLSIZE - inf[0]))
@@ -416,6 +416,7 @@ static void display_func(){
 						if (maxViewDistance < abs(iz + it->first[2] * CELLSIZE - inf[2]))
 							continue;
 
+						// If the Cell is buried under ground, it's no use examining each face of the Cell.
 						if(6 <= cv(ix, iy, iz).adjcents)
 							continue;
 
@@ -427,9 +428,9 @@ static void display_func(){
 						bool z1 = cv(ix, iy, iz + 1).getType() != Cell::Air;
 						pdev->SetTexture( 0, cv(ix, iy, iz).getType() == Cell::Grass ? g_pTexture : g_pTexture2);
 						D3DXMatrixTranslation(&matWorld,
-							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2) * 1,
-							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2) * 1,
-							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2) * 1);
+							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
+							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
+							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
 						pdev->SetTransform(D3DTS_WORLD, &matWorld);
 						if(!x0 && !x1 && !y0 && !y1)
 							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
@@ -474,26 +475,10 @@ static void display_func(){
 //	if(hr == D3DERR_DEVICELOST)
 }
 
+/// Obsolete, since we catch the key strokes via GetKeyState.
+/// But it would be better to catch the Windows Messages if the frame rate is really low.
 static void key_func(unsigned char key, int x, int y){
-	switch(key){
-//		case 'w': player.trymove(movespeed * Vec3d(0,0,1)); break;
-//		case 's': player.trymove(movespeed * Vec3d(0,0,-1)); break;
-//		case 'a': player.trymove(movespeed * Vec3d(-1,0,0)); break;
-//		case 'd': player.trymove(movespeed * Vec3d(1,0,0)); break;
-//		case 'q': player.trymove(jumpspeed * Vec3d(0,1,0), true); break;
-//		case 'z': player.trymove(jumpspeed * Vec3d(0,-1,0), true); break;
-#if 1
-//		case '4': player.py[1] += rotatespeed; player.updateRot(); break;
-//		case '6': player.py[1] -= rotatespeed; player.updateRot(); break;
-//		case '8': player.py[0] += rotatespeed; player.updateRot(); break;
-//		case '2': player.py[0] -= rotatespeed; player.updateRot(); break;
-#else
-		case '4': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, 1, 0))); break;
-		case '6': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(0, -1, 0))); break;
-		case '8': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(1, 0, 0))); break;
-		case '2': player.rot = player.rot.rotate(rotatespeed, player.rot.trans(Vec3d(-1, 0, 0))); break;
-#endif
-	}
+	key; x; y;
 }
 
 
