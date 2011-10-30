@@ -14,45 +14,64 @@ namespace dxtest{
 
 const int CELLSIZE = 16;
 
+class Game;
 class World;
 
 class Cell{
 public:
 	enum Type{Air, Grass, Banana};
 
-	Cell(Type t = Air) : type(t){}
+	Cell(Type t = Air) : type(t), adjacents(0){}
 	Type getType()const{return type;}
+	int getAdjacents()const{return adjacents;}
 protected:
 	enum Type type;
+	int adjacents;
+
+	friend class CellVolume;
 };
 
 class CellVolume{
 public:
-	class CellInt : public Cell{
-	public:
-		CellInt(Type t = Air) : Cell(t), adjcents(0){}
-		int adjcents;
-	};
-
-	static const CellInt v0;
+	static const Cell v0;
 
 protected:
 	World *world;
 	Vec3i index;
-	CellInt v[CELLSIZE][CELLSIZE][CELLSIZE];
+	Cell v[CELLSIZE][CELLSIZE][CELLSIZE];
+
+	/// <summary>
+	/// Indices are in order of [X, Z, beginning and end]
+	/// </summary>
+	int _scanLines[CELLSIZE][CELLSIZE][2];
+
+	int _solidcount;
 
 	void updateAdj(int ix, int iy, int iz){
-		v[ix][iy][iz].adjcents =
+		v[ix][iy][iz].adjacents =
+			(cell(ix - 1, iy, iz).type != Cell::Air ? 1 : 0) +
+            (cell(ix + 1, iy, iz).type != Cell::Air ? 1 : 0) +
+            (cell(ix, iy - 1, iz).type != Cell::Air ? 1 : 0) +
+            (cell(ix, iy + 1, iz).type != Cell::Air ? 1 : 0) +
+            (cell(ix, iy, iz - 1).type != Cell::Air ? 1 : 0) +
+            (cell(ix, iy, iz + 1).type != Cell::Air ? 1 : 0);
+/*		v[ix][iy][iz].adjacents =
 			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
 			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
 			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
 			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
 			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
-			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0);
+			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0)*/;
 	}
 public:
-	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind){}
-	const CellInt &operator()(int ix, int iy, int iz)const;
+	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind), _solidcount(0){
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++)
+			_scanLines[ix][iy][iz] = 0;
+	}
+	const Cell &operator()(int ix, int iy, int iz)const;
+	const Cell &cell(int ix, int iy, int iz)const{
+		return operator()(ix, iy, iz);
+	}
 	bool isSolid(const Vec3i &ipos)const{
 		return
 			0 <= ipos[0] && ipos[0] < CELLSIZE &&
@@ -61,9 +80,14 @@ public:
 			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
 	}
 	void setCell(const Cell &c, int ix, int iy, int iz){
-		v[ix][iy][iz] = CellInt(c.getType());
+		v[ix][iy][iz] = Cell(c.getType());
 	}
 	void initialize(const Vec3i &index);
+	void updateCache();
+	typedef int ScanLinesType[CELLSIZE][CELLSIZE][2];
+	const ScanLinesType &getScanLines()const{
+		return _scanLines;
+	}
 };
 
 inline bool operator<(const Vec3i &a, const Vec3i &b){
@@ -96,7 +120,7 @@ public:
 
 	World(Game &agame);
 
-	const CellVolume::CellInt &cell(int ix, int iy, int iz){
+	const Cell &cell(int ix, int iy, int iz){
 		if(volume.find(Vec3i(ix, iy, iz)) != volume.end()){
 			CellVolume &cv = volume[Vec3i(ix, iy, iz)];
 			return cv(ix - ix / CELLSIZE * CELLSIZE, iy - iy / CELLSIZE * CELLSIZE, iz - iz / CELLSIZE * CELLSIZE);
@@ -125,12 +149,6 @@ public:
 
 class Player;
 
-class Game{
-public:
-	Player *player;
-	World *world;
-};
-
 /// <summary>Returns Cell object indexed by coordinates in this CellVolume.</summary>
 /// <remarks>
 /// If the indices reach border of the CellVolume, it will recursively retrieve foreign Cells.
@@ -144,7 +162,7 @@ public:
 /// <param name="iy">Index along Y axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
 /// <param name="iz">Index along Z axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
 /// <returns>A CellInt object at ix, iy, iz</returns>
-inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)const{
+inline const Cell &CellVolume::operator()(int ix, int iy, int iz)const{
 	if(ix < 0 || CELLSIZE <= ix){
 		Vec3i ci(index[0] + SignDiv(ix, CELLSIZE), index[1], index[2]);
 		World::VolumeMap::iterator it = world->volume.find(ci);
@@ -152,6 +170,8 @@ inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)
 			const CellVolume &cv = it->second;
 			return cv(SignModulo(ix, CELLSIZE), iy, iz);
 		}
+		else
+			return (*this)(ix < 0 ? 0 : CELLSIZE - 1, iy, iz);
 	}
 	if(iy < 0 || CELLSIZE <= iy){
 		Vec3i ci(index[0], index[1] + SignDiv(iy, CELLSIZE), index[2]);
@@ -160,6 +180,8 @@ inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)
 			const CellVolume &cv = it->second;
 			return cv(ix, SignModulo(iy, CELLSIZE), iz);
 		}
+		else
+			return (*this)(ix, iy < 0 ? 0 : CELLSIZE - 1, iz);
 	}
 	if(iz < 0 || CELLSIZE <= iz){
 		Vec3i ci(index[0], index[1], index[2] + SignDiv(iz, CELLSIZE));
@@ -168,6 +190,8 @@ inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)
 			const CellVolume &cv = it->second;
 			return cv(ix, iy, SignModulo(iz, CELLSIZE));
 		}
+		else
+			return (*this)(ix, iy, iz < 0 ? 0 : CELLSIZE - 1);
 	}
 	return
 		0 <= ix && ix < CELLSIZE &&
@@ -175,8 +199,6 @@ inline const CellVolume::CellInt &CellVolume::operator()(int ix, int iy, int iz)
 		0 <= iz && iz < CELLSIZE 
 		? v[ix][iy][iz] : v0;
 }
-
-inline World::World(Game &agame) : game(agame), volume(operator<){game.world = this;}
 
 
 }

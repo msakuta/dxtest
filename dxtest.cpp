@@ -1,6 +1,7 @@
 #include "perlinNoise.h"
 #include "Player.h"
 #include "World.h"
+#include "Game.h"
 #include <assert.h>
 #include <windows.h>
 #include <d3dx9.h>
@@ -34,7 +35,7 @@ LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
-const int maxViewDistance = CELLSIZE * 2;
+const int Game::maxViewDistance = CELLSIZE * 2;
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
@@ -354,8 +355,14 @@ static void display_func(){
 	player.think(dt);
 	world.think(dt);
 
-	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 	frame++;
+
+	game.draw();
+}
+
+void dxtest::Game::draw()const{
+
+	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 
 
 /*	for(int i = 0; i < 10; i++){
@@ -382,9 +389,9 @@ static void display_func(){
 		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
         pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
 
-		const Vec3i inf = World::real2ind(player.getPos());
+		const Vec3i inf = World::real2ind(player->getPos());
 
-		for(World::VolumeMap::iterator it = world.volume.begin(); it != world.volume.end(); it++){
+		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
 			const Vec3i &key = it->first;
 			CellVolume &cv = it->second;
 
@@ -403,8 +410,11 @@ static void display_func(){
 				continue;
 
 			for(int ix = 0; ix < CELLSIZE; ix++){
-				for(int iy = 0; iy < CELLSIZE; iy++){
-					for(int iz = 0; iz < CELLSIZE; iz++){
+				for(int iz = 0; iz < CELLSIZE; iz++){
+					// This detail culling is not much effective.
+					//if (bf.Contains(new BoundingBox(ind2real(keyindex + new Vec3i(ix, kv.Value.scanLines[ix, iz, 0], iz)), ind2real(keyindex + new Vec3i(ix + 1, kv.Value.scanLines[ix, iz, 1] + 1, iz + 1)))) != ContainmentType.Disjoint)
+					const int (&scanLines)[CELLSIZE][CELLSIZE][2] = cv.getScanLines();
+					for (int iy = scanLines[ix][iz][0]; iy < scanLines[ix][iz][1]; iy++){
 
 						// Cull too far Cells
 						if (cv(ix, iy, iz).getType() == Cell::Air)
@@ -417,7 +427,7 @@ static void display_func(){
 							continue;
 
 						// If the Cell is buried under ground, it's no use examining each face of the Cell.
-						if(6 <= cv(ix, iy, iz).adjcents)
+						if(6 <= cv(ix, iy, iz).getAdjacents())
 							continue;
 
 						bool x0 = cv(ix - 1, iy, iz).getType() != Cell::Air;

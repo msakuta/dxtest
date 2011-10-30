@@ -21,12 +21,14 @@ extern "C"{
 namespace dxtest{
 
 
+class Game;
+
 /// <summary>
 /// The Player's class, maintaining camera's position and velocity, etc.
 /// </summary>
 class Player{
 public:
-	Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.; game.player = this;}
+	Player(Game &game);
 	const Vec3d &getPos()const{return pos;}
 	const Quatd &getRot()const{return rot;}
 	void setPos(const Vec3d &apos){pos = apos;}

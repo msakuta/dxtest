@@ -1,17 +1,19 @@
 #include "World.h"
+#include "Game.h"
 #include "Player.h"
 #include "perlinNoise.h"
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
 #include <math.h>
+#include <vector>
 /** \file
  * \brief Implements World class.
  */
 
 /// <summary>The constant object that will returned when index is out of range.</summary>
 /// <remarks>What a mess.</remarks>
-const dxtest::CellVolume::CellInt dxtest::CellVolume::v0(dxtest::Cell::Air);
+const dxtest::Cell dxtest::CellVolume::v0(dxtest::Cell::Air);
 
 /// <summary>
 /// Initialize this CellVolume with Perlin Noise with given position index.
@@ -27,17 +29,18 @@ void dxtest::CellVolume::initialize(const Vec3i &ci){
 	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(field));
 
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-		v[ix][iy][iz] = CellInt(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : Cell::Grass);
+		v[ix][iy][iz] = Cell(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : Cell::Grass);
 	}
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		updateAdj(ix, iy, iz);
 	}
 }
 
+dxtest::World::World(dxtest::Game &agame) : game(agame), volume(operator<){
+	game.world = this;
+}
+
 void dxtest::World::initialize(){
-	Vec3i zero(0, 0, 0);
-	volume[zero] = CellVolume(this, zero);
-	volume[zero].initialize(zero);
 }
 
 /// <summary>
@@ -64,7 +67,9 @@ Vec3d dxtest::World::ind2real(const Vec3i &ipos){
 
 void dxtest::World::think(double dt){
 	Vec3i i = real2ind(game.player->getPos());
-	for (int ix = -2; ix <= 2; ix++) for (int iy = 0; iy < 2; iy++) for (int iz = -2; iz <= 2; iz++){
+	std::vector<CellVolume*> changed;
+	int radius = Game::maxViewDistance / CELLSIZE;
+	for (int ix = -radius; ix <= radius; ix++) for (int iy = 0; iy < 2; iy++) for (int iz = -radius; iz <= radius; iz++){
 		Vec3i ci(
 			SignDiv((i[0] + ix * CELLSIZE), CELLSIZE),
 			SignDiv((i[1] + (2 * iy - 1) * CELLSIZE / 2), CELLSIZE),
@@ -73,6 +78,36 @@ void dxtest::World::think(double dt){
 			volume[ci] = CellVolume(this, ci);
 			CellVolume &cv = volume[ci];
 			cv.initialize(ci);
+			changed.push_back(&volume[ci]);
+		}
+	}
+
+	for(std::vector<CellVolume*>::iterator it = changed.begin(); it != changed.end(); it++)
+		(*it)->updateCache();
+}
+
+void dxtest::CellVolume::updateCache()
+{
+	for (int ix = 0; ix < CELLSIZE; ix++) for (int iy = 0; iy < CELLSIZE; iy++) for (int iz = 0; iz < CELLSIZE; iz++)
+		updateAdj(ix, iy, iz);
+    
+	// Build up scanline map
+	for (int ix = 0; ix < CELLSIZE; ix++) for (int iz = 0; iz < CELLSIZE; iz++)
+	{
+		// Find start and end points for this scan line
+		bool begun = false;
+		for (int iy = 0; iy < CELLSIZE; iy++)
+		{
+			Cell &c = v[ix][iy][iz];
+			if (c.type != Cell::Air && (c.adjacents != 0 && c.adjacents != 6))
+			{
+				if (!begun)
+				{
+					begun = true;
+					_scanLines[ix][iz][0] = iy;
+				}
+				_scanLines[ix][iz][1] = iy + 1;
+			}
 		}
 	}
 }

@@ -1,5 +1,6 @@
 #include "Player.h"
 #include "World.h"
+#include "Game.h"
 /** \file
  * \brief Implements Player class
  */
@@ -14,6 +15,9 @@ const double Player::movespeed = 2.; ///< Walk speed [meters per second]
 const double Player::runspeed = 5.;
 const double Player::jumpspeed = 5.; ///< Speed set vertically when jumping [meters per second]
 const double Player::rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
+
+
+Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.; game.player = this;}
 
 void Player::think(double dt){
 	if(isFlying())
