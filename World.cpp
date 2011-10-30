@@ -34,9 +34,26 @@ void dxtest::CellVolume::initialize(const Vec3i &ci){
 	pnp.yofs = ci[2] * CELLSIZE;
 	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(field));
 
+	float grassFactor[CELLSIZE][CELLSIZE];
+	pnp.seed = 54123;
+	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(grassFactor));
+	float dirtFactor[CELLSIZE][CELLSIZE];
+	pnp.seed = 112398;
+	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(dirtFactor));
+	float gravelFactor[CELLSIZE][CELLSIZE];
+	pnp.seed = 93532;
+	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(gravelFactor));
+
 	_solidcount = 0;
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-		v[ix][iy][iz] = Cell(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : Cell::Grass);
+		Cell::Type ct;
+		if (dirtFactor[ix][iz] < grassFactor[ix][iz] && gravelFactor[ix][iz] < grassFactor[ix][iz])
+			ct = Cell::Grass;
+		else if (grassFactor[ix][iz] < dirtFactor[ix][iz] && grassFactor[ix][iz] < dirtFactor[ix][iz])
+			ct = Cell::Dirt;
+		else
+			ct = Cell::Gravel;
+		v[ix][iy][iz] = Cell(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : ct);
 		if(v[ix][iy][iz].type != Cell::Air)
 			_solidcount++;
 	}

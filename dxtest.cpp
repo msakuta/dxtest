@@ -30,8 +30,8 @@ IDirect3D9 *pd3d;
 IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
-LPDIRECT3DTEXTURE9      g_pTexture = NULL; // Our texture
-LPDIRECT3DTEXTURE9      g_pTexture2 = NULL;
+LPDIRECT3DTEXTURE9      g_pTextures[4] = {NULL}; // Our texture
+const char *textureNames[4] = {NULL, "grass.jpg", "dirt.jpg", "gravel.png"};
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -117,11 +117,15 @@ HRESULT InitGeometry()
 {
     // Use D3DX to create a texture from a file based image
 //    if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture ) ) )
-	if( FAILED( D3DXCreateTextureFromFile( pdev, L"grass.jpg", &g_pTexture ) ) )
-	{
-		MessageBox( NULL, L"Could not find grass.jpg", L"Textures.exe", MB_OK );
-		return E_FAIL;
-    }
+	for(int i = 1; i < numof(g_pTextures); i++){
+		if( FAILED( D3DXCreateTextureFromFileA( pdev, textureNames[i], &g_pTextures[i] ) ) )
+		{
+			std::stringstream ss;
+			ss << "Could not find " << textureNames[i];
+			MessageBoxA( NULL, ss.str().c_str(), "Texture Load Error", MB_OK );
+			return E_FAIL;
+		}
+	}
 
 /*	if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture2 ) ) )
 	{
@@ -513,7 +517,7 @@ void dxtest::Game::draw()const{
 						bool y1 = cv(ix, iy + 1, iz).getType() != Cell::Air;
 						bool z0 = cv(ix, iy, iz - 1).getType() != Cell::Air;
 						bool z1 = cv(ix, iy, iz + 1).getType() != Cell::Air;
-						pdev->SetTexture( 0, cv(ix, iy, iz).getType() == Cell::Grass ? g_pTexture : g_pTexture2);
+						pdev->SetTexture( 0, g_pTextures[cv(ix, iy, iz).getType()]);
 						D3DXMatrixTranslation(&matWorld,
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),

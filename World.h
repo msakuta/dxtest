@@ -20,11 +20,12 @@ class World;
 
 class Cell{
 public:
-	enum Type{Air, Grass, Banana};
+	enum Type{Air, Grass, Dirt, Gravel, NumTypes};
 
 	Cell(Type t = Air) : type(t), adjacents(0){}
 	Type getType()const{return type;}
 	int getAdjacents()const{return adjacents;}
+	bool isSolid()const{return type != Air;}
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
 protected:
