@@ -234,6 +234,8 @@ HRESULT InitGeometry()
 }
 #endif
 
+static D3DXPLANE frustum[6];
+
 //-----------------------------------------------------------------------------
 // Name: SetupMatrices()
 // Desc: Sets up the world, view, and projection transform matrices.
@@ -241,23 +243,14 @@ HRESULT InitGeometry()
 VOID SetupMatrices()
 {
 
-    // Set up our view matrix. A view matrix can be defined given an eye point,
-    // a point to lookat, and a direction for which way is up. Here, we set the
-    // eye five units back along the z-axis and up three units, look at the
-    // origin, and define "up" to be in the y-direction.
-    D3DXVECTOR3 vEyePt( 0.0f, 1.50f, -20.0f );
-    D3DXVECTOR3 vLookatPt( 0.0f, 0.0f, 0.0f );
-    D3DXVECTOR3 vUpVec( 0.0f, 1.0f, 0.0f );
-    D3DXMATRIXA16 matEye;
-//    D3DXMatrixLookAtLH( &matEye, &vEyePt, &vLookatPt, &vUpVec );
+	D3DXMATRIXA16 matEye;
 	D3DXMatrixRotationQuaternion(&matEye, (D3DXQUATERNION*)(&player.rot.cast<float>()));
 	D3DXMATRIXA16 matRot;
-	FLOAT fYaw = clock() % 5000 * (2.f * D3DX_PI) / 5000.f;
-//	D3DXMatrixRotationY(&matRot, fYaw);
 	D3DXMatrixTranslation(&matRot, -player.pos[0], -player.pos[1], -player.pos[2]);
-    D3DXMATRIXA16 matView;
+	D3DXMATRIXA16 matView;
 	D3DXMatrixMultiply(&matView, &matRot, &matEye);
-    pdev->SetTransform( D3DTS_VIEW, &matView );
+	pdev->SetTransform( D3DTS_VIEW, &matView );
+
 
     // For the projection matrix, we set up a perspective transform (which
     // transforms geometry from 3D view space to 2D viewport space, with
@@ -268,6 +261,25 @@ VOID SetupMatrices()
     D3DXMATRIXA16 matProj;
     D3DXMatrixPerspectiveFovLH( &matProj, D3DX_PI / 4, (double)windowWidth / windowHeight, .30f, 100.0f );
     pdev->SetTransform( D3DTS_PROJECTION, &matProj );
+
+	D3DXMATRIX VP = matView * matProj;
+
+	D3DXVECTOR4 col0(VP(0, 0), VP(1, 0), VP(2, 0), VP(3, 0));
+	D3DXVECTOR4 col1(VP(0, 1), VP(1, 1), VP(2, 1), VP(3, 1));
+	D3DXVECTOR4 col2(VP(0, 2), VP(1, 2), VP(2, 2), VP(3, 2));
+	D3DXVECTOR4 col3(VP(0, 3), VP(1, 3), VP(2, 3), VP(3, 3));
+
+	frustum[0] = (D3DXPLANE)col2;
+	frustum[1] = (D3DXPLANE)(col3 - col2);
+	frustum[2] = (D3DXPLANE)(col3 + col0);
+	frustum[3] = (D3DXPLANE)(col3 - col0);  // right
+	frustum[4] = (D3DXPLANE)(col3 - col1);  // top
+	frustum[5] = (D3DXPLANE)(col3 + col1);  // bottom
+
+	// Normalize the frustum
+	for( int i = 0; i < 6; ++i )
+		D3DXPlaneNormalize( &frustum[i], &frustum[i] );
+
 
 	// Set up material
 	D3DMATERIAL9 mtrl;
@@ -305,6 +317,39 @@ VOID SetupMatrices()
 
 }
 
+/// <summary>Test if given bounding box intersects or included in a frustum.</summary>
+/// <remarks>Test assumes frustum planes face inward.</remarks>
+/// <returns>True if intersects</returns>
+bool FrustumCheck(D3DXVECTOR3 min, D3DXVECTOR3 max, const D3DXPLANE* frustum)
+{
+	D3DXVECTOR3 P;
+	D3DXVECTOR3 Q;
+
+	for(int i = 0; i < 6; ++i)
+	{
+		// For each coordinate axis x, y, z...
+		for(int j = 0; j < 3; ++j)
+		{
+			// Make PQ point in the same direction as the plane normal on this axis.
+			if( frustum[i][j] > 0.0f )
+			{
+				P[j] = min[j];
+				Q[j] = max[j];
+			}
+			else 
+			{
+				P[j] = max[j];
+				Q[j] = min[j];
+			}
+		}
+
+		if(D3DXPlaneDotCoord(&frustum[i], &Q) < 0.0f  )
+			return false;
+	}
+	return true;
+} 
+
+
 void RotateModel(){
     // For our world matrix, we will just rotate the object about the y-axis.
     D3DXMATRIXA16 matWorld;
@@ -337,6 +382,12 @@ static void display_func(){
 	static timemeas_t tm;
 	double dt = 0.;
 
+	std::ofstream logwriter = std::ofstream("dxtest.log", std::ofstream::app);
+	game.logwriter = &logwriter;
+	CellVolume::cellInvokes = 0;
+	CellVolume::cellForeignInvokes = 0;
+	CellVolume::cellForeignExists = 0;
+
 	if(frame == 0){
 		TimeMeasStart(&tm);
 	}
@@ -346,6 +397,8 @@ static void display_func(){
 		if(.1 < dt)
 			dt = .1;
 	}
+
+	logwriter << "Frame " << frame << ", dt = " << dt << std::endl;
 
 	// GetKeyState() doesn't care which window is active, so we must manually check it.
 	if(GetActiveWindow() == hWndApp){
@@ -358,6 +411,9 @@ static void display_func(){
 	frame++;
 
 	game.draw();
+
+	logwriter << "cellInvokes = " << CellVolume::cellInvokes << ", cellForeignInvokes = " << CellVolume::cellForeignInvokes << ", cellForeignExists = " << CellVolume::cellForeignExists << std::endl;
+	game.logwriter = NULL;
 }
 
 void dxtest::Game::draw()const{
@@ -394,6 +450,14 @@ void dxtest::Game::draw()const{
 		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
 			const Vec3i &key = it->first;
 			CellVolume &cv = it->second;
+
+			// If all content is air, skip drawing
+			if(cv.getSolidCount() == 0)
+				continue;
+
+			// Examine if intersects or included in viewing frustum
+			if(!FrustumCheck((D3DXVECTOR3)World::ind2real(key * CELLSIZE).cast<float>(), (D3DXVECTOR3)World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>(), frustum))
+				continue;
 
 			// Cull too far CellVolumes
 			if ((key[0] + 1) * CELLSIZE + maxViewDistance < inf[0])

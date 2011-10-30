@@ -15,6 +15,12 @@
 /// <remarks>What a mess.</remarks>
 const dxtest::Cell dxtest::CellVolume::v0(dxtest::Cell::Air);
 
+
+int dxtest::CellVolume::cellInvokes = 0;
+int dxtest::CellVolume::cellForeignInvokes = 0;
+int dxtest::CellVolume::cellForeignExists = 0;
+
+
 /// <summary>
 /// Initialize this CellVolume with Perlin Noise with given position index.
 /// </summary>
@@ -28,8 +34,11 @@ void dxtest::CellVolume::initialize(const Vec3i &ci){
 	pnp.yofs = ci[2] * CELLSIZE;
 	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(field));
 
+	_solidcount = 0;
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		v[ix][iy][iz] = Cell(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : Cell::Grass);
+		if(v[ix][iy][iz].type != Cell::Air)
+			_solidcount++;
 	}
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		updateAdj(ix, iy, iz);

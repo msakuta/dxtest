@@ -88,6 +88,11 @@ public:
 	const ScanLinesType &getScanLines()const{
 		return _scanLines;
 	}
+	int getSolidCount()const{return _solidcount;}
+
+	static int cellInvokes;
+	static int cellForeignInvokes;
+	static int cellForeignExists;
 };
 
 inline bool operator<(const Vec3i &a, const Vec3i &b){
@@ -163,10 +168,13 @@ class Player;
 /// <param name="iz">Index along Z axis in Cells. If in range [0, CELLSIZE), this object's member is returned.</param>
 /// <returns>A CellInt object at ix, iy, iz</returns>
 inline const Cell &CellVolume::operator()(int ix, int iy, int iz)const{
+	cellInvokes++;
 	if(ix < 0 || CELLSIZE <= ix){
+		cellForeignInvokes++;
 		Vec3i ci(index[0] + SignDiv(ix, CELLSIZE), index[1], index[2]);
 		World::VolumeMap::iterator it = world->volume.find(ci);
 		if(it != world->volume.end()){
+			cellForeignExists++;
 			const CellVolume &cv = it->second;
 			return cv(SignModulo(ix, CELLSIZE), iy, iz);
 		}
@@ -174,9 +182,11 @@ inline const Cell &CellVolume::operator()(int ix, int iy, int iz)const{
 			return (*this)(ix < 0 ? 0 : CELLSIZE - 1, iy, iz);
 	}
 	if(iy < 0 || CELLSIZE <= iy){
+		cellForeignInvokes++;
 		Vec3i ci(index[0], index[1] + SignDiv(iy, CELLSIZE), index[2]);
 		World::VolumeMap::iterator it = world->volume.find(ci);
 		if(it != world->volume.end()){
+			cellForeignExists++;
 			const CellVolume &cv = it->second;
 			return cv(ix, SignModulo(iy, CELLSIZE), iz);
 		}
@@ -184,9 +194,11 @@ inline const Cell &CellVolume::operator()(int ix, int iy, int iz)const{
 			return (*this)(ix, iy < 0 ? 0 : CELLSIZE - 1, iz);
 	}
 	if(iz < 0 || CELLSIZE <= iz){
+		cellForeignInvokes++;
 		Vec3i ci(index[0], index[1], index[2] + SignDiv(iz, CELLSIZE));
 		World::VolumeMap::iterator it = world->volume.find(ci);
 		if(it != world->volume.end()){
+			cellForeignExists++;
 			const CellVolume &cv = it->second;
 			return cv(ix, iy, SignModulo(iz, CELLSIZE));
 		}

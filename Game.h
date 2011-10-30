@@ -1,5 +1,6 @@
 #ifndef DXTEST_GAME_H
 #define DXTEST_GAME_H
+#include <fstream>
 
 namespace dxtest{
 
@@ -10,6 +11,7 @@ class Game{
 public:
 	Player *player;
 	World *world;
+	std::ostream *logwriter;
 	static const int maxViewDistance;
 
 	void draw()const;
