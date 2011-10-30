@@ -120,3 +120,33 @@ void dxtest::CellVolume::updateCache()
 		}
 	}
 }
+
+void dxtest::World::serialize(std::ostream &o){
+	int count = volume.size();
+	o.write((char*)&count, sizeof count);
+	for(VolumeMap::iterator it = volume.begin(); it != volume.end(); it++)
+		it->second.serialize(o);
+}
+
+void dxtest::World::unserialize(std::istream &is){
+	try
+	{
+		volume.clear();
+		int count;
+		is.read((char*)&count, sizeof count);
+		for (int i = 0; i < count; i++)
+		{
+			CellVolume cv(this);
+			cv.unserialize(is);
+			volume.insert(std::pair<Vec3i, CellVolume>(cv.getIndex(), cv));
+		}
+		for(VolumeMap::iterator it = volume.begin(); it != volume.end(); it++)
+			it->second.updateCache();
+	}
+	catch(std::exception &e)
+	{
+		*game.logwriter << e.what() << std::endl;
+		return;
+	}
+}
+

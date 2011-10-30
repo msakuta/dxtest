@@ -76,6 +76,28 @@ void Player::keyinput(double dt){
 	if(oldKeys['C'] & 0x80 && !(GetKeyState('C') >> 8))
 		moveMode = moveMode == Ghost ? Walk : Ghost;
 
+	if (oldKeys['K'] & 0x80 && !(GetKeyState('K') >> 8)){
+		try{
+			std::ofstream fs("save.sav", std::ios_base::trunc | std::ios_base::binary);
+			game.serialize(fs);
+			fs.close();
+		}
+		catch (std::exception &e){
+			*game.logwriter << e.what() << std::endl;
+		}
+	}
+
+	if (oldKeys['L'] & 0x80 && !(GetKeyState('L') >> 8)){
+		try{
+			std::ifstream fs("save.sav", std::ios_base::binary);
+			game.unserialize(fs);
+			fs.close();
+		}
+		catch (std::exception &e){
+			*game.logwriter << e.what() << std::endl;
+		}
+	}
+
 	GetKeyboardState(oldKeys);
 }
 
@@ -120,5 +142,23 @@ bool Player::trymove(const Vec3d &delta, bool setvelo){
 	return true;
 }
 
+
+void Player::serialize(std::ostream &o){
+	o.write((char*)&pos, sizeof pos);
+	o.write((char*)&velo, sizeof velo);
+	o.write((char*)&py, sizeof py);
+	o.write((char*)&rot, sizeof rot);
+	o.write((char*)&desiredRot, sizeof desiredRot);
+	o.write((char*)&moveMode, sizeof moveMode);
+}
+
+void Player::unserialize(std::istream &is){
+	is.read((char*)&pos, sizeof pos);
+	is.read((char*)&velo, sizeof velo);
+	is.read((char*)&py, sizeof py);
+	is.read((char*)&rot, sizeof rot);
+	is.read((char*)&desiredRot, sizeof desiredRot);
+	is.read((char*)&moveMode, sizeof moveMode);
+}
 
 }

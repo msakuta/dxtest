@@ -17,6 +17,7 @@ extern "C"{
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
+#include <sstream>
 /** \file
  *  \brief The main source
  */
@@ -36,6 +37,18 @@ const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect 
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
 const int Game::maxViewDistance = CELLSIZE * 2;
+
+/// <summary>
+/// The magic number sequence to identify this file as a binary save file.
+/// </summary>
+/// <remarks>Taken from Subversion repository's UUID. Temporarily this value is different from xnatest's one, but
+/// I hope some day dxtest and xnatest will share save file.</remarks>
+const byte Game::saveFileSignature[] = { 0x55, 0x0f, 0x0c, 0xd0, 0xa3, 0x6f, 0x72, 0x4b };//{ 0x83, 0x1f, 0x50, 0xec, 0x5b, 0xf7, 0x40, 0x3a };
+
+/// <summary>
+/// The current version of this program's save file.
+/// </summary>
+const int Game::saveFileVersion = 1;
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
@@ -644,4 +657,28 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	return 0;
 }
 
+void dxtest::Game::serialize(std::ostream &o){
+	o.write((char*)saveFileSignature, sizeof saveFileSignature);
+	o.write((char*)&saveFileVersion, sizeof saveFileVersion);
+	player->serialize(o);
+	world->serialize(o);
+}
+
+void dxtest::Game::unserialize(std::istream &is){
+    byte signature[sizeof saveFileSignature];
+	is.read((char*)signature, sizeof signature);
+    if (memcmp(signature, saveFileSignature, sizeof signature))
+		throw std::exception("File signature mismatch");
+
+    int version;
+	is.read((char*)&version, sizeof version);
+	if(version != saveFileVersion){
+		std::stringstream ss;
+		ss << "File version mismatch, file = " << version << ", program = " << saveFileVersion;
+		throw std::exception(ss.str().c_str());
+	}
+
+	player->unserialize(is);
+	world->unserialize(is);
+}
 

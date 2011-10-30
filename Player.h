@@ -40,6 +40,9 @@ public:
 	}
 	bool trymove(const Vec3d &delta, bool setvelo = false);
 
+	void serialize(std::ostream &o);
+	void unserialize(std::istream &i);
+
 	/// <summary>
 	/// Half-size of the Player along X axis.
 	/// </summary>

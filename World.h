@@ -8,6 +8,7 @@
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
 #include <map>
+#include <fstream>
 #include "SignModulo.h"
 
 namespace dxtest{
@@ -24,6 +25,8 @@ public:
 	Cell(Type t = Air) : type(t), adjacents(0){}
 	Type getType()const{return type;}
 	int getAdjacents()const{return adjacents;}
+	void serialize(std::ostream &o);
+	void unserialize(std::istream &i);
 protected:
 	enum Type type;
 	int adjacents;
@@ -68,6 +71,7 @@ public:
 		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++)
 			_scanLines[ix][iy][iz] = 0;
 	}
+	const Vec3i &getIndex()const{return index;}
 	const Cell &operator()(int ix, int iy, int iz)const;
 	const Cell &cell(int ix, int iy, int iz)const{
 		return operator()(ix, iy, iz);
@@ -89,6 +93,9 @@ public:
 		return _scanLines;
 	}
 	int getSolidCount()const{return _solidcount;}
+
+	void serialize(std::ostream &o);
+	void unserialize(std::istream &i);
 
 	static int cellInvokes;
 	static int cellForeignInvokes;
@@ -149,7 +156,43 @@ public:
 	}
 
 	void think(double dt);
+
+	void serialize(std::ostream &o);
+	void unserialize(std::istream &i);
 };
+
+
+
+
+// ----------------------------------------------------------------------------
+//                            Implementation
+// ----------------------------------------------------------------------------
+
+inline void Cell::serialize(std::ostream &o){
+	char b = (char)type;
+	o.write(&b, 1);
+}
+
+inline void Cell::unserialize(std::istream &i){
+	char b;
+	i.read(&b, 1);
+	type = (Type)b;
+}
+
+
+inline void CellVolume::serialize(std::ostream &o){
+	o.write((char*)&index, sizeof index);
+	o.write((char*)&_solidcount, sizeof _solidcount);
+	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++)
+		v[ix][iy][iz].serialize(o);
+}
+
+inline void CellVolume::unserialize(std::istream &i){
+	i.read((char*)&index, sizeof index);
+	i.read((char*)&_solidcount, sizeof _solidcount);
+	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++)
+		v[ix][iy][iz].unserialize(i);
+}
 
 
 class Player;
