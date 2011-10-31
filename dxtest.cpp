@@ -630,6 +630,72 @@ void dxtest::Game::draw(double dt)const{
 //	if(hr == D3DERR_DEVICELOST)
 }
 
+bool Game::save(){
+	try{
+		static char customfilter[64] = "Save File\0*.sav\0";
+		static char file[MAX_PATH] = "save.sav";
+		OPENFILENAMEA ofn;
+		ofn.lStructSize = sizeof ofn;
+		ofn.hwndOwner = hWndApp;
+		ofn.hInstance = NULL;
+		ofn.lpstrFilter = "Save File\0*.sav\0";
+		ofn.lpstrCustomFilter = customfilter;
+		ofn.nMaxCustFilter = sizeof customfilter;
+		ofn.nFilterIndex = 1;
+		ofn.lpstrFile = file;
+		ofn.nMaxFile = sizeof file;
+		ofn.lpstrFileTitle = NULL;
+		ofn.nMaxFileTitle = 0;
+		ofn.lpstrInitialDir = ".";
+		ofn.lpstrTitle = NULL;
+		ofn.lpstrDefExt = NULL;
+		ofn.Flags = OFN_OVERWRITEPROMPT;
+		if(GetSaveFileNameA(&ofn)){
+			std::ofstream fs(file, std::ios_base::trunc | std::ios_base::binary);
+			game.serialize(fs);
+			fs.close();
+		}
+	}
+	catch (std::exception &e){
+		*game.logwriter << e.what() << std::endl;
+		return false;
+	}
+	return true;
+}
+
+bool Game::load(){
+	try{
+		static char customfilter[64] = "Save File\0*.sav\0";
+		static char file[MAX_PATH] = "save.sav";
+		OPENFILENAMEA ofn;
+		ofn.lStructSize = sizeof ofn;
+		ofn.hwndOwner = hWndApp;
+		ofn.hInstance = NULL;
+		ofn.lpstrFilter = "Save File\0*.sav\0";
+		ofn.lpstrCustomFilter = customfilter;
+		ofn.nMaxCustFilter = sizeof customfilter;
+		ofn.nFilterIndex = 1;
+		ofn.lpstrFile = file;
+		ofn.nMaxFile = sizeof file;
+		ofn.lpstrFileTitle = NULL;
+		ofn.nMaxFileTitle = OFN_FILEMUSTEXIST;
+		ofn.lpstrInitialDir = ".";
+		ofn.lpstrTitle = NULL;
+		ofn.lpstrDefExt = NULL;
+		ofn.Flags = 0;
+		if(GetOpenFileNameA(&ofn)){
+			std::ifstream fs(file, std::ios_base::binary);
+			game.unserialize(fs);
+			fs.close();
+		}
+	}
+	catch (std::exception &e){
+		*game.logwriter << e.what() << std::endl;
+		return false;
+	}
+	return true;
+}
+
 /// Obsolete, since we catch the key strokes via GetKeyState.
 /// But it would be better to catch the Windows Messages if the frame rate is really low.
 static void key_func(unsigned char key, int x, int y){

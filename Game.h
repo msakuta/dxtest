@@ -18,6 +18,8 @@ public:
 
 	void draw(double dt)const;
 
+	bool save();
+	bool load();
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
 };

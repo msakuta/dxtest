@@ -155,25 +155,11 @@ void Player::keyinput(double dt){
 	}
 
 	if (oldKeys['K'] & 0x80 && !(GetKeyState('K') >> 8)){
-		try{
-			std::ofstream fs("save.sav", std::ios_base::trunc | std::ios_base::binary);
-			game.serialize(fs);
-			fs.close();
-		}
-		catch (std::exception &e){
-			*game.logwriter << e.what() << std::endl;
-		}
+		game.save();
 	}
 
 	if (oldKeys['L'] & 0x80 && !(GetKeyState('L') >> 8)){
-		try{
-			std::ifstream fs("save.sav", std::ios_base::binary);
-			game.unserialize(fs);
-			fs.close();
-		}
-		catch (std::exception &e){
-			*game.logwriter << e.what() << std::endl;
-		}
+		game.load();
 	}
 
 	memcpy(oldKeys, keys, sizeof oldKeys);
