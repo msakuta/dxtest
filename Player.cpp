@@ -186,9 +186,9 @@ bool Player::trymove(const Vec3d &delta, bool setvelo){
 	Vec3d worldDeltaDir = worldDelta.norm();
 
 	if(moveMode != Ghost){
-		for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++){
+		for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++) for(int iy = 0; iy < 2; iy++){
 			// Position to check collision with the walls
-			Vec3d hitcheck(dest[0] + (ix * 2 - 1) * boundWidth, dest[1] - eyeHeight, dest[2] + (iz * 2 - 1) * boundLength);
+			Vec3d hitcheck(dest[0] + (ix * 2 - 1) * boundWidth, dest[1] - eyeHeight + iy * boundHeight, dest[2] + (iz * 2 - 1) * boundLength);
 			if(game.world->isSolid(game.world->real2ind(hitcheck))){
 				// Clear velocity component along delta direction
 				double vad = velo.sp(worldDeltaDir);
