@@ -38,6 +38,13 @@ LPD3DXFONT g_font;
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
 
+static bool mouse_tracking = false;
+static bool mouse_captured = false;
+int s_mousex, s_mousey;
+static int s_mousedragx, s_mousedragy;
+static int s_mouseoldx, s_mouseoldy;
+static POINT mouse_pos = {0, 0};
+
 const int Game::maxViewDistance = CELLSIZE * 2;
 
 /// <summary>
@@ -392,7 +399,53 @@ void RotateModel(){
 
 
 
+void capture_mouse(){
+	int c;
+	extern HWND hWndApp;
+	HWND hwd = hWndApp;
+	RECT r;
+	s_mouseoldx = s_mousex;
+	s_mouseoldy = s_mousey;
+	GetClientRect(hwd, &r);
+	mouse_pos.x = (r.left + r.right) / 2;
+	mouse_pos.y = (r.top + r.bottom) / 2;
+	ClientToScreen(hwd, &mouse_pos);
+	SetCursorPos(mouse_pos.x, mouse_pos.y);
+	c = ShowCursor(FALSE);
+	while(0 <= c)
+		c = ShowCursor(FALSE);
+	mouse_captured = true;
+}
 
+static void uncapture_mouse(){
+	extern HWND hWndApp;
+	HWND hwd = hWndApp;
+	mouse_captured = 0;
+	s_mousedragx = s_mouseoldx;
+	s_mousedragy = s_mouseoldy;
+	mouse_pos.x = s_mouseoldx;
+	mouse_pos.y = s_mouseoldy;
+	ClientToScreen(hwd, &mouse_pos);
+	SetCursorPos(mouse_pos.x, mouse_pos.y);
+	while(ShowCursor(TRUE) <= 0);
+/*	while(ShowCursor(TRUE) < 0);*/
+}
+
+void mouse_func(int button, int x, int y){
+
+	s_mousex = x;
+	s_mousey = y;
+
+	if(button == WM_RBUTTONUP){
+		mouse_captured = !mouse_captured;
+		if(mouse_captured){
+			capture_mouse();
+		}
+		else{
+			uncapture_mouse();
+		}
+	}
+}
 
 static void initializeVolume(){
 	world.initialize();
@@ -430,6 +483,21 @@ static void display_func(){
 	world.think(dt);
 
 	frame++;
+
+	int mousedelta[2] = {0, 0};
+	if(mouse_captured){
+		POINT p;
+		if(GetActiveWindow() != hWndApp){
+			mouse_captured = 0;
+			while(ShowCursor(TRUE) <= 0);
+		}
+		if(GetCursorPos(&p) && (p.x != mouse_pos.x || p.y != mouse_pos.y)){
+			mousedelta[0] = p.x - mouse_pos.x;
+			mousedelta[1] = p.y - mouse_pos.y;
+			player.rotateLook(p.x - mouse_pos.x, p.y - mouse_pos.y);
+			SetCursorPos(mouse_pos.x, mouse_pos.y);
+		}
+	}
 
 	game.draw(dt);
 
@@ -585,6 +653,39 @@ static LRESULT WINAPI CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, L
 		case WM_CHAR:
 			key_func(wParam, 0, 0);
 			break;
+
+		case WM_MOUSELEAVE:
+			while(ShowCursor(TRUE) <= 0);
+			mouse_tracking = 0;
+			break;
+
+		case WM_MOUSEMOVE:
+			if(!mouse_tracking){
+				TRACKMOUSEEVENT evt;
+				evt.cbSize = sizeof evt;
+				evt.dwFlags = TME_LEAVE;
+				evt.hwndTrack = hWnd;
+				TrackMouseEvent(&evt);
+				while(0 <= ShowCursor(FALSE));
+				mouse_tracking = true;
+			}
+			if(!mouse_captured){
+				s_mousex = LOWORD(lParam);
+				s_mousey = HIWORD(lParam);
+//				pl.mousemove(hWnd, s_mousex - s_mousedragx, s_mousey - s_mousedragy, wParam, lParam);
+
+/*				if((wParam & MK_RBUTTON) && !mouse_captured){
+					capture_mouse();
+				}*/
+			}
+			break;
+
+		case WM_RBUTTONDOWN:
+		case WM_LBUTTONDOWN:
+		case WM_RBUTTONUP:
+		case WM_LBUTTONUP:
+			mouse_func(message, LOWORD(lParam), HIWORD(lParam));
+			return 0;
 
 		case WM_DESTROY:
 			PostQuitMessage(0);

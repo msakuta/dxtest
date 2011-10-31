@@ -1,6 +1,9 @@
 #include "Player.h"
 #include "World.h"
 #include "Game.h"
+extern "C"{
+#include <clib/mathdef.h>
+}
 /** \file
  * \brief Implements Player class
  */
@@ -215,6 +218,12 @@ bool Player::trymove(const Vec3d &delta, bool setvelo){
 
 	pos = dest;
 	return true;
+}
+
+void Player::rotateLook(double dx, double dy){
+	py[0] -= dy * M_PI / 2000.;
+	py[1] -= dx * M_PI / 2000.;
+	updateRot();
 }
 
 

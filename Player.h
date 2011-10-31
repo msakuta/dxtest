@@ -37,8 +37,10 @@ public:
 	void keyinput(double dt);
 	void updateRot(){
 		desiredRot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
+		rot = Quatd::rotation(py[0], 1, 0, 0).rotate(py[1], 0, 1, 0);
 	}
 	bool trymove(const Vec3d &delta, bool setvelo = false);
+	void rotateLook(double dx, double dy);
 
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
