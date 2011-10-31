@@ -224,6 +224,7 @@ void Player::serialize(std::ostream &o){
 	o.write((char*)&py, sizeof py);
 	o.write((char*)&rot, sizeof rot);
 	o.write((char*)&desiredRot, sizeof desiredRot);
+	o.write((char*)&bricks, sizeof bricks);
 	o.write((char*)&moveMode, sizeof moveMode);
 }
 
@@ -233,6 +234,7 @@ void Player::unserialize(std::istream &is){
 	is.read((char*)&py, sizeof py);
 	is.read((char*)&rot, sizeof rot);
 	is.read((char*)&desiredRot, sizeof desiredRot);
+	is.read((char*)&bricks, sizeof bricks);
 	is.read((char*)&moveMode, sizeof moveMode);
 }
 
