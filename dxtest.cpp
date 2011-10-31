@@ -32,8 +32,9 @@ IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTextures[4] = {NULL}; // Our texture
-const char *textureNames[4] = {NULL, "grass.jpg", "dirt.jpg", "gravel.png"};
+const char *textureNames[4] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png"};
 LPD3DXFONT g_font;
+LPD3DXSPRITE g_sprite;
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -120,6 +121,8 @@ HRESULT InitD3D(HWND hWnd)
 
 	D3DXCreateFont(pdev, 20, 0, FW_BOLD, 0, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE, TEXT("Courier"), &g_font );
 
+	D3DXCreateSprite(pdev, &g_sprite);
+
 	return S_OK;
 }
 
@@ -128,7 +131,7 @@ HRESULT InitGeometry()
 {
     // Use D3DX to create a texture from a file based image
 //    if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture ) ) )
-	for(int i = 1; i < numof(g_pTextures); i++){
+	for(int i = 0; i < numof(g_pTextures); i++){
 		if( FAILED( D3DXCreateTextureFromFileA( pdev, textureNames[i], &g_pTextures[i] ) ) )
 		{
 			std::stringstream ss;
@@ -613,6 +616,50 @@ void dxtest::Game::draw(double dt)const{
 						}
 					}
 				}
+			}
+		}
+
+		{
+			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
+			D3DXMATRIX mat, matscale, mattrans;
+			static const float scales[] = {1, 0.125f, 0.5f, 0.5f};
+			D3DRECT dr = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(g_pTextures) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
+			
+			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
+			for(int i = 1; i < numof(g_pTextures); i++){
+				D3DXMatrixScaling( &matscale, scales[i], scales[i], 1. );
+				D3DXMatrixTranslation(&mattrans, (i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0);
+				D3DXMatrixMultiply(&mat, &matscale, &mattrans);
+				g_sprite->SetTransform(&mat);
+				g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
+				g_sprite->Draw(g_pTextures[i], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
+					D3DCOLOR_ARGB(player->curtype == i ? 255 : 127,255,255,255));
+				g_sprite->End();
+
+				// Show cursor
+				if(player->curtype == i){
+					g_sprite->SetTransform(&mattrans);
+					g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
+					g_sprite->Draw(g_pTextures[0], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
+						D3DCOLOR_ARGB(255,255,255,255));
+					g_sprite->End();
+				}
+				r.left = (i - numof(g_pTextures) / 2) * 64 + windowWidth / 2;
+				r.right = r.left + 64;
+				g_font->DrawTextA(NULL, dstring() << player->bricks[i], -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+/*				if(player->curtype == i){
+					static const CUSTOMVERTEX buf[] = {
+						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
+						{Vec3f((i - numof(g_pTextures) / 2 + 1) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
+						{Vec3f((i - numof(g_pTextures) / 2 + 1) * 64 + windowWidth / 2, windowHeight, 0), D3DCOLOR_XRGB(255,0,0)},
+						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight, 0), D3DCOLOR_XRGB(255,0,0)},
+						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
+					};
+					D3DXMATRIXA16 matWorld;
+					D3DXMatrixScaling(&matWorld, 1. / windowWidth, 1. / windowHeight, 1.);
+					pdev->SetTransform( D3DTS_WORLD, &matWorld );
+					pdev->DrawPrimitiveUP(D3DPT_LINESTRIP, 4, buf, sizeof*buf);
+				}*/
 			}
 		}
 
