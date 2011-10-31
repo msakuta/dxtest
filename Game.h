@@ -16,7 +16,7 @@ public:
 	static const unsigned char saveFileSignature[];
 	static const int saveFileVersion;
 
-	void draw()const;
+	void draw(double dt)const;
 
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);

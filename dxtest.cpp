@@ -14,6 +14,7 @@ extern "C"{
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
+#include <cpplib/dstring.h>
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
@@ -32,6 +33,7 @@ LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
 LPDIRECT3DTEXTURE9      g_pTextures[4] = {NULL}; // Our texture
 const char *textureNames[4] = {NULL, "grass.jpg", "dirt.jpg", "gravel.png"};
+LPD3DXFONT g_font;
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -108,6 +110,8 @@ HRESULT InitD3D(HWND hWnd)
 
     // Turn on the zbuffer
     pdev->SetRenderState( D3DRS_ZENABLE, TRUE );
+
+	D3DXCreateFont(pdev, 20, 0, FW_BOLD, 0, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE, TEXT("Courier"), &g_font );
 
 	return S_OK;
 }
@@ -427,13 +431,13 @@ static void display_func(){
 
 	frame++;
 
-	game.draw();
+	game.draw(dt);
 
 	logwriter << "cellInvokes = " << CellVolume::cellInvokes << ", cellForeignInvokes = " << CellVolume::cellForeignInvokes << ", cellForeignExists = " << CellVolume::cellForeignExists << std::endl;
 	game.logwriter = NULL;
 }
 
-void dxtest::Game::draw()const{
+void dxtest::Game::draw(double dt)const{
 
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 
@@ -544,20 +548,12 @@ void dxtest::Game::draw()const{
 			}
 		}
 
-		RotateModel();
-
-		pdev->SetStreamSource( 0, g_pVB, 0, sizeof( CUSTOMVERTEX ) );
-        pdev->SetFVF( D3DFVF_CUSTOMVERTEX );
-
-		for(int n = 0; n < 100; n++)
-	        pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, CC/3 );
-/*		for(int n = 0; n < 20; n++){
-			int c = 0;
-			for(int i = 0; i < suf->np; i++){
-				pdev->DrawPrimitive(D3DPT_TRIANGLEFAN, c, suf->p[i]->uv.n);
-				c += suf->p[i]->uv.n;
-			}
-		}*/
+		RECT rct = {0, 0, 500, 20};
+		g_font->DrawTextA(NULL, dstring() << "Frametime: " << dt, -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		rct.top += 20, rct.bottom += 20;
+		g_font->DrawTextA(NULL, dstring() << "pos: " << player->pos[0] << ", " << player->pos[1] << ", " << player->pos[2], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		rct.top += 20, rct.bottom += 20;
+		g_font->DrawTextA(NULL, dstring() << "bricks: " << player->bricks[1] << ", " << player->bricks[2] << ", " << player->bricks[3], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 
 		pdev->EndScene();
 	}
