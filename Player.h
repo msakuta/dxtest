@@ -80,6 +80,16 @@ public:
 	Quatd desiredRot;
 	double py[2]; ///< Pitch and Yaw
 	bool floorTouched;
+
+	/// <summary>
+	/// The current type of Cell being placed.
+	/// </summary>
+	Cell::Type curtype;
+
+	/// <summary>
+	/// The brick materials the Player has.
+	/// </summary>
+	int bricks[4];
 };
 
 }

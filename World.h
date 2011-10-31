@@ -84,9 +84,7 @@ public:
 			0 <= ipos[2] && ipos[2] < CELLSIZE &&
 			v[ipos[0]][ipos[1]][ipos[2]].getType() != Cell::Air;
 	}
-	void setCell(const Cell &c, int ix, int iy, int iz){
-		v[ix][iy][iz] = Cell(c.getType());
-	}
+	bool setCell(int ix, int iy, int iz, const Cell &newCell);
 	void initialize(const Vec3i &index);
 	void updateCache();
 	typedef int ScanLinesType[CELLSIZE][CELLSIZE][2];
@@ -134,12 +132,21 @@ public:
 	World(Game &agame);
 
 	const Cell &cell(int ix, int iy, int iz){
-		if(volume.find(Vec3i(ix, iy, iz)) != volume.end()){
-			CellVolume &cv = volume[Vec3i(ix, iy, iz)];
-			return cv(ix - ix / CELLSIZE * CELLSIZE, iy - iy / CELLSIZE * CELLSIZE, iz - iz / CELLSIZE * CELLSIZE);
+		Vec3i ci = Vec3i(SignDiv(ix, CELLSIZE), SignDiv(iy, CELLSIZE), SignDiv(iz, CELLSIZE));
+		VolumeMap::iterator it = volume.find(ci);
+		if(it != volume.end()){
+			return it->second(SignModulo(ix, CELLSIZE), SignModulo(iy, CELLSIZE), SignModulo(iz, CELLSIZE));
 		}
 		else
 			return CellVolume::v0;
+	}
+
+	bool setCell(int ix, int iy, int iz, const Cell &newCell){
+		Vec3i ci = Vec3i(SignDiv(ix, CELLSIZE), SignDiv(iy, CELLSIZE), SignDiv(iz, CELLSIZE));
+		VolumeMap::iterator it = volume.find(ci);
+		if(it != volume.end())
+			return it->second.setCell(SignModulo(ix, CELLSIZE), SignModulo(iy, CELLSIZE), SignModulo(iz, CELLSIZE), newCell);
+		return false;
 	}
 
 	bool isSolid(int ix, int iy, int iz){
@@ -256,6 +263,33 @@ inline const Cell &CellVolume::operator()(int ix, int iy, int iz)const{
 		? v[ix][iy][iz] : v0;
 }
 
+inline bool CellVolume::setCell(int ix, int iy, int iz, const Cell &newCell){
+	if (ix < 0 || CELLSIZE <= ix || iy < 0 || CELLSIZE <= iy || iz < 0 || CELLSIZE <= iz)
+		return false;
+	else
+	{
+		// Update solidcount by difference of solidity before and after cell assignment.
+		int before = v[ix][iy][iz].isSolid();
+		int after = newCell.isSolid();
+		_solidcount += after - before;
+
+		v[ix][iy][iz] = newCell;
+		updateCache();
+		if(ix <= 0)
+			world->volume[Vec3i(index[0] - 1, index[1], index[2])].updateCache();
+		else if(CELLSIZE - 1 <= ix)
+			world->volume[Vec3i(index[0] + 1, index[1], index[2])].updateCache();
+		if(iy <= 0)
+			world->volume[Vec3i(index[0], index[1] - 1, index[2])].updateCache();
+		else if (CELLSIZE - 1 <= iy)
+			world->volume[Vec3i(index[0], index[1] + 1, index[2])].updateCache();
+		if(iz <= 0)
+			world->volume[Vec3i(index[0], index[1], index[2] - 1)].updateCache();
+		else if (CELLSIZE - 1 <= iz)
+			world->volume[Vec3i(index[0], index[1], index[2] + 1)].updateCache();
+		return true;
+	}
+}
 
 }
 

@@ -17,7 +17,12 @@ const double Player::jumpspeed = 5.; ///< Speed set vertically when jumping [met
 const double Player::rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
 
-Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){py[0] = py[1] = 0.; game.player = this;}
+Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){
+	py[0] = py[1] = 0.;
+	game.player = this;
+	curtype = Cell::Grass;
+	bricks[0] = bricks[1] = bricks[2] = bricks[3] = 0;
+}
 
 void Player::think(double dt){
 	if(isFlying())
@@ -33,10 +38,15 @@ void Player::think(double dt){
 //	pos += velo * dt;
 	trymove(velo * dt);
 	rot = Quatd::slerp(desiredRot, rot, exp(-dt * 5.));
+
+	*game.logwriter << "Player [" << pos[0] << "," << pos[1] << "," << pos[2] << "]" << std::endl;
 }
 
 void Player::keyinput(double dt){
-	bool shift = GetKeyState(VK_SHIFT) >> 8;
+	bool shift = !!(GetKeyState(VK_SHIFT) >> 8);
+	BYTE keys[256];
+
+	GetKeyboardState(keys);
 
 	// Linear movement keys
 	if(GetKeyState('W') >> 8)
@@ -76,6 +86,71 @@ void Player::keyinput(double dt){
 	if(oldKeys['C'] & 0x80 && !(GetKeyState('C') >> 8))
 		moveMode = moveMode == Ghost ? Walk : Ghost;
 
+	// Toggle curtype
+	if (oldKeys['X'] & 0x80 && !(keys['X'] & 0x80))
+		curtype = (Cell::Type)(curtype % 3 + 1);
+
+	// Dig the cell forward
+	if(oldKeys['T'] & 0x80 && !(keys['T'] & 0x80)){
+		Vec3d dir = rot.itrans(Vec3d(0,0,1));
+		for(int i = 1; i < 8; i++){
+			Vec3i ci = World::real2ind(pos + dir * i / 2);
+			Cell c = game.world->cell(ci[0], ci[1], ci[2]);
+			if (c.isSolid() && game.world->setCell(ci[0], ci[1], ci[2], Cell(Cell::Air)))
+			{
+				bricks[c.getType()] += 1;
+				break;
+			}
+		}
+	}
+
+	// Place a solid cell next to another solid cell.
+	// Feasible only if the player has a brick.
+	if (oldKeys['G'] & 0x80 && !(keys['G'] & 0x80) && 0 < bricks[curtype]){
+		Vec3d dir = rot.itrans(Vec3d(0,0,1));
+		for (int i = 1; i < 8; i++){
+			Vec3i ci = World::real2ind(pos + dir * i / 2);
+
+			if(game.world->isSolid(ci[0], ci[1], ci[2]))
+				continue;
+
+			bool buried = false;
+			for(int ix = 0; ix < 2 && !buried; ix++) for(int iz = 0; iz < 2 && !buried; iz++) for(int iy = 0; iy < 2 && !buried; iy++){
+				// Position to check collision with the walls
+				Vec3d hitcheck(pos[0] + (ix * 2 - 1) * boundWidth, pos[1] - eyeHeight + iy * boundHeight, pos[2] + (iz * 2 - 1) * boundLength);
+
+				if(ci == World::real2ind(hitcheck))
+					buried = true;
+			}
+			if(buried)
+				continue;
+
+			static const Vec3i directions[] = {
+				Vec3i(1,0,0),
+				Vec3i(-1,0,0),
+				Vec3i(0,1,0),
+				Vec3i(0,-1,0),
+				Vec3i(0,0,1),
+				Vec3i(0,0,-1),
+			};
+
+			bool supported = false;
+			for(int j = 0; j < numof(directions); j++)
+				if (game.world->isSolid(ci + directions[j])){
+					supported = true;
+					break;
+				}
+			if(!supported)
+				continue;
+
+			if(game.world->setCell(ci[0], ci[1], ci[2], Cell(curtype)))
+			{
+				bricks[curtype] -= 1;
+				break;
+			}
+		}
+	}
+
 	if (oldKeys['K'] & 0x80 && !(GetKeyState('K') >> 8)){
 		try{
 			std::ofstream fs("save.sav", std::ios_base::trunc | std::ios_base::binary);
@@ -98,7 +173,7 @@ void Player::keyinput(double dt){
 		}
 	}
 
-	GetKeyboardState(oldKeys);
+	memcpy(oldKeys, keys, sizeof oldKeys);
 }
 
 /// <summary>
