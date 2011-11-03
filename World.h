@@ -18,14 +18,27 @@ const int CELLSIZE = 16;
 class Game;
 class World;
 
+/// <summary>The atomic unit of the world.</summary>
 class Cell{
 public:
-	enum Type{Air, Grass, Dirt, Gravel, NumTypes};
+	enum Type{
+		Air, ///< Null cell
+		Grass, ///< Grass cell
+		Dirt, ///< Dirt cell
+		Gravel, ///< Gravel cell
+		HalfBit = 0x4, ///< Bit indicating half height of base material.
+		HalfAir = HalfBit | Air, ///< This does not really exist, just a theoretical entity.
+		HalfGrass = HalfBit | Grass, ///< Half-height Grass.
+		HalfDirt = HalfBit | Dirt,
+		HalfGravel = HalfBit | Gravel,
+		NumTypes
+	};
 
 	Cell(Type t = Air) : type(t), adjacents(0){}
 	Type getType()const{return type;}
 	int getAdjacents()const{return adjacents;}
 	bool isSolid()const{return type != Air;}
+	bool isTranslucent()const{return type == Air || type & HalfBit;}
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
 protected:
@@ -51,22 +64,7 @@ protected:
 
 	int _solidcount;
 
-	void updateAdj(int ix, int iy, int iz){
-		v[ix][iy][iz].adjacents =
-			(cell(ix - 1, iy, iz).type != Cell::Air ? 1 : 0) +
-            (cell(ix + 1, iy, iz).type != Cell::Air ? 1 : 0) +
-            (cell(ix, iy - 1, iz).type != Cell::Air ? 1 : 0) +
-            (cell(ix, iy + 1, iz).type != Cell::Air ? 1 : 0) +
-            (cell(ix, iy, iz - 1).type != Cell::Air ? 1 : 0) +
-            (cell(ix, iy, iz + 1).type != Cell::Air ? 1 : 0);
-/*		v[ix][iy][iz].adjacents =
-			(0 < ix ? v[ix-1][iy][iz].getType() != Cell::Air : 0) +
-			(ix < CELLSIZE-1 ? v[ix+1][iy][iz].getType() != Cell::Air : 0) +
-			(0 < iy ? v[ix][iy-1][iz].getType() != Cell::Air : 0) +
-			(iy < CELLSIZE-1 ? v[ix][iy+1][iz].getType() != Cell::Air : 0) +
-			(0 < iz ? v[ix][iy][iz-1].getType() != Cell::Air : 0) +
-			(iz < CELLSIZE-1 ? v[ix][iy][iz+1].getType() != Cell::Air : 0)*/;
-	}
+	void updateAdj(int ix, int iy, int iz);
 public:
 	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind), _solidcount(0){
 		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++)
@@ -140,6 +138,9 @@ public:
 		else
 			return CellVolume::v0;
 	}
+	const Cell &cell(const Vec3i &pos){
+		return cell(pos[0], pos[1], pos[2]);
+	}
 
 	bool setCell(int ix, int iy, int iz, const Cell &newCell){
 		Vec3i ci = Vec3i(SignDiv(ix, CELLSIZE), SignDiv(iy, CELLSIZE), SignDiv(iz, CELLSIZE));
@@ -153,15 +154,10 @@ public:
 		return isSolid(Vec3i(ix, iy, iz));
 	}
 
-	bool isSolid(const Vec3i &v){
-		Vec3i ci(SignDiv(v[0], CELLSIZE), SignDiv(v[1], CELLSIZE), SignDiv(v[2], CELLSIZE));
-		if(volume.find(ci) != volume.end()){
-			CellVolume &cv = volume[ci];
-			return cv.isSolid(Vec3i(SignModulo(v[0], CELLSIZE), SignModulo(v[1], CELLSIZE), SignModulo(v[2], CELLSIZE)));
-		}
-		else
-			return false;
-	}
+	bool isSolid(const Vec3i &v);
+	bool isSolid(const Vec3d &rv);
+
+	double boundaryHeight(const Vec3d &rv);
 
 	void think(double dt);
 

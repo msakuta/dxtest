@@ -586,18 +586,26 @@ void dxtest::Game::draw(double dt)const{
 						if(6 <= cv(ix, iy, iz).getAdjacents())
 							continue;
 
-						bool x0 = cv(ix - 1, iy, iz).getType() != Cell::Air;
-						bool x1 = cv(ix + 1, iy, iz).getType() != Cell::Air;
-						bool y0 = cv(ix, iy - 1, iz).getType() != Cell::Air;
-						bool y1 = cv(ix, iy + 1, iz).getType() != Cell::Air;
-						bool z0 = cv(ix, iy, iz - 1).getType() != Cell::Air;
-						bool z1 = cv(ix, iy, iz + 1).getType() != Cell::Air;
-						pdev->SetTexture( 0, g_pTextures[cv(ix, iy, iz).getType()]);
+						bool x0 = !cv(ix - 1, iy, iz).isTranslucent();
+						bool x1 = !cv(ix + 1, iy, iz).isTranslucent();
+						bool y0 = !cv(ix, iy - 1, iz).isTranslucent();
+						bool y1 = !cv(ix, iy + 1, iz).isTranslucent();
+						bool z0 = !cv(ix, iy, iz - 1).isTranslucent();
+						bool z1 = !cv(ix, iy, iz + 1).isTranslucent();
+						const Cell &cell = cv(ix, iy, iz);
+						pdev->SetTexture(0, g_pTextures[cell.getType() & ~Cell::HalfBit]);
 						D3DXMatrixTranslation(&matWorld,
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
-						pdev->SetTransform(D3DTS_WORLD, &matWorld);
+						if(cell.getType() & Cell::HalfBit){
+							D3DXMATRIXA16 matscale, matresult;
+							D3DXMatrixScaling(&matscale, 1, 0.5, 1.);
+							D3DXMatrixMultiply(&matresult, &matscale, &matWorld);
+							pdev->SetTransform(D3DTS_WORLD, &matresult);
+						}
+						else
+							pdev->SetTransform(D3DTS_WORLD, &matWorld);
 						if(!x0 && !x1 && !y0 && !y1)
 							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
 						else{
@@ -622,44 +630,38 @@ void dxtest::Game::draw(double dt)const{
 		{
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
 			D3DXMATRIX mat, matscale, mattrans;
+			static const Cell::Type types[] = {Cell::Grass, Cell::Dirt, Cell::Gravel, Cell::HalfGrass, Cell::HalfDirt, Cell::HalfGravel};
 			static const float scales[] = {1, 0.125f, 0.5f, 0.5f};
-			D3DRECT dr = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(g_pTextures) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
+			static const int sizes[] = {64, 512, 128, 128};
+			D3DRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
 			
 			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
-			for(int i = 1; i < numof(g_pTextures); i++){
+			for(int h = 0; h < numof(types); h++){
+				int i = types[h] % numof(g_pTextures);
+				Cell::Type t = types[h];
+				bool half = t & Cell::HalfBit;
+
 				D3DXMatrixScaling( &matscale, scales[i], scales[i], 1. );
-				D3DXMatrixTranslation(&mattrans, (i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0);
+				D3DXMatrixTranslation(&mattrans, (h - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64 + (half ? 32 : 0), 0);
 				D3DXMatrixMultiply(&mat, &matscale, &mattrans);
 				g_sprite->SetTransform(&mat);
 				g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
-				g_sprite->Draw(g_pTextures[i], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
-					D3DCOLOR_ARGB(player->curtype == i ? 255 : 127,255,255,255));
+				RECT srcrect = {0, (half ? sizes[i] / 2 : 0), sizes[i], sizes[i]};
+				g_sprite->Draw(g_pTextures[i], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
+					D3DCOLOR_ARGB(player->curtype == t ? 255 : 127,255,255,255));
 				g_sprite->End();
 
 				// Show cursor
-				if(player->curtype == i){
+				if(player->curtype == t){
 					g_sprite->SetTransform(&mattrans);
 					g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
 					g_sprite->Draw(g_pTextures[0], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
 						D3DCOLOR_ARGB(255,255,255,255));
 					g_sprite->End();
 				}
-				r.left = (i - numof(g_pTextures) / 2) * 64 + windowWidth / 2;
+				r.left = (h - numof(types) / 2) * 64 + windowWidth / 2;
 				r.right = r.left + 64;
-				g_font->DrawTextA(NULL, dstring() << player->bricks[i], -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
-/*				if(player->curtype == i){
-					static const CUSTOMVERTEX buf[] = {
-						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
-						{Vec3f((i - numof(g_pTextures) / 2 + 1) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
-						{Vec3f((i - numof(g_pTextures) / 2 + 1) * 64 + windowWidth / 2, windowHeight, 0), D3DCOLOR_XRGB(255,0,0)},
-						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight, 0), D3DCOLOR_XRGB(255,0,0)},
-						{Vec3f((i - numof(g_pTextures) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0), D3DCOLOR_XRGB(255,0,0)},
-					};
-					D3DXMATRIXA16 matWorld;
-					D3DXMatrixScaling(&matWorld, 1. / windowWidth, 1. / windowHeight, 1.);
-					pdev->SetTransform( D3DTS_WORLD, &matWorld );
-					pdev->DrawPrimitiveUP(D3DPT_LINESTRIP, 4, buf, sizeof*buf);
-				}*/
+				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 			}
 		}
 

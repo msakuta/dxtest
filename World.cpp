@@ -11,21 +11,23 @@
  * \brief Implements World class.
  */
 
+namespace dxtest{
+
 /// <summary>The constant object that will returned when index is out of range.</summary>
 /// <remarks>What a mess.</remarks>
-const dxtest::Cell dxtest::CellVolume::v0(dxtest::Cell::Air);
+const Cell CellVolume::v0(Cell::Air);
 
 
-int dxtest::CellVolume::cellInvokes = 0;
-int dxtest::CellVolume::cellForeignInvokes = 0;
-int dxtest::CellVolume::cellForeignExists = 0;
+int CellVolume::cellInvokes = 0;
+int CellVolume::cellForeignInvokes = 0;
+int CellVolume::cellForeignExists = 0;
 
 
 /// <summary>
 /// Initialize this CellVolume with Perlin Noise with given position index.
 /// </summary>
 /// <param name="ci">The position of new CellVolume</param>
-void dxtest::CellVolume::initialize(const Vec3i &ci){
+void CellVolume::initialize(const Vec3i &ci){
 	float field[CELLSIZE][CELLSIZE];
 
 	PerlinNoise::PerlinNoiseParams pnp(12321, 0.5);
@@ -62,11 +64,11 @@ void dxtest::CellVolume::initialize(const Vec3i &ci){
 	}
 }
 
-dxtest::World::World(dxtest::Game &agame) : game(agame), volume(operator<){
+World::World(Game &agame) : game(agame), volume(operator<){
 	game.world = this;
 }
 
-void dxtest::World::initialize(){
+void World::initialize(){
 }
 
 /// <summary>
@@ -74,7 +76,7 @@ void dxtest::World::initialize(){
 /// </summary>
 /// <param name="pos">world vector</param>
 /// <returns>indices</returns>
-Vec3i dxtest::World::real2ind(const Vec3d &pos){
+Vec3i World::real2ind(const Vec3d &pos){
 	Vec3d tpos = pos;
 	Vec3i vi(floor(tpos[0]), floor(tpos[1]), floor(tpos[2]));
 	return vi + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
@@ -85,13 +87,50 @@ Vec3i dxtest::World::real2ind(const Vec3d &pos){
 /// </summary>
 /// <param name="ipos">indices</param>
 /// <returns>world vector</returns>
-Vec3d dxtest::World::ind2real(const Vec3i &ipos){
+Vec3d World::ind2real(const Vec3i &ipos){
 	Vec3i tpos = ipos - Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
 	return tpos.cast<double>();
 }
 
+/// <summary>Solidity check for given index coordinates</summary>
+bool World::isSolid(const Vec3i &v){
+	Vec3i ci(SignDiv(v[0], CELLSIZE), SignDiv(v[1], CELLSIZE), SignDiv(v[2], CELLSIZE));
+	if(volume.find(ci) != volume.end()){
+		CellVolume &cv = volume[ci];
+		return cv.isSolid(Vec3i(SignModulo(v[0], CELLSIZE), SignModulo(v[1], CELLSIZE), SignModulo(v[2], CELLSIZE)));
+	}
+	else
+		return false;
+}
 
-void dxtest::World::think(double dt){
+/// <summary>Solidity check for given world coordinates</summary>
+bool World::isSolid(const Vec3d &rv){
+	Vec3i v = real2ind(rv);
+	Vec3i ci(SignDiv(v[0], CELLSIZE), SignDiv(v[1], CELLSIZE), SignDiv(v[2], CELLSIZE));
+	if(volume.find(ci) != volume.end()){
+		CellVolume &cv = volume[ci];
+		const Cell &c = cv(SignModulo(v[0], CELLSIZE), SignModulo(v[1], CELLSIZE), SignModulo(v[2], CELLSIZE));
+		return c.getType() & Cell::HalfBit ? rv[1] - floor(rv[1]) < .5 : c.isSolid();
+	}
+	else
+		return false;
+}
+
+/// <summary>Returns distance to nearest possible boundary upwards.</summary>
+/// <remarks>The return value means how deep this point is from the surface. Only meaningful for solid cells.</remarks>
+double World::boundaryHeight(const Vec3d &rv){
+	Vec3i v = real2ind(rv);
+	Vec3i ci(SignDiv(v[0], CELLSIZE), SignDiv(v[1], CELLSIZE), SignDiv(v[2], CELLSIZE));
+	if(volume.find(ci) != volume.end()){
+		CellVolume &cv = volume[ci];
+		const Cell &c = cv(SignModulo(v[0], CELLSIZE), SignModulo(v[1], CELLSIZE), SignModulo(v[2], CELLSIZE));
+		return c.getType() & Cell::HalfBit ? ceil(rv[1] - .5) - (rv[1] - 0.5) : ceil(rv[1]) - rv[1];
+	}
+	else
+		return 0.;
+}
+
+void World::think(double dt){
 	Vec3i i = real2ind(game.player->getPos());
 	std::vector<CellVolume*> changed;
 	int radius = Game::maxViewDistance / CELLSIZE;
@@ -112,7 +151,17 @@ void dxtest::World::think(double dt){
 		(*it)->updateCache();
 }
 
-void dxtest::CellVolume::updateCache()
+void CellVolume::updateAdj(int ix, int iy, int iz){
+	v[ix][iy][iz].adjacents =
+		(!cell(ix - 1, iy, iz).isTranslucent() ? 1 : 0) +
+        (!cell(ix + 1, iy, iz).isTranslucent() ? 1 : 0) +
+        (!cell(ix, iy - 1, iz).isTranslucent() ? 1 : 0) +
+        (!cell(ix, iy + 1, iz).isTranslucent() ? 1 : 0) +
+        (!cell(ix, iy, iz - 1).isTranslucent() ? 1 : 0) +
+        (!cell(ix, iy, iz + 1).isTranslucent() ? 1 : 0);
+}
+
+void CellVolume::updateCache()
 {
 	for (int ix = 0; ix < CELLSIZE; ix++) for (int iy = 0; iy < CELLSIZE; iy++) for (int iz = 0; iz < CELLSIZE; iz++)
 		updateAdj(ix, iy, iz);
@@ -138,14 +187,14 @@ void dxtest::CellVolume::updateCache()
 	}
 }
 
-void dxtest::World::serialize(std::ostream &o){
+void World::serialize(std::ostream &o){
 	int count = volume.size();
 	o.write((char*)&count, sizeof count);
 	for(VolumeMap::iterator it = volume.begin(); it != volume.end(); it++)
 		it->second.serialize(o);
 }
 
-void dxtest::World::unserialize(std::istream &is){
+void World::unserialize(std::istream &is){
 	try
 	{
 		volume.clear();
@@ -167,3 +216,4 @@ void dxtest::World::unserialize(std::istream &is){
 	}
 }
 
+}

@@ -16,7 +16,7 @@ const double Player::boundHeight = 1.7;
 const double Player::eyeHeight = 1.5;
 const double Player::movespeed = 2.; ///< Walk speed [meters per second]
 const double Player::runspeed = 5.;
-const double Player::jumpspeed = 5.; ///< Speed set vertically when jumping [meters per second]
+const double Player::jumpspeed = 4.; ///< Speed set vertically when jumping [meters per second]
 const double Player::rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
 
 
@@ -39,7 +39,18 @@ void Player::think(double dt){
 	Vec3i ipos = game.world->real2ind(pos);
 
 //	pos += velo * dt;
-	trymove(velo * dt);
+
+	// Check if the Player's feet are under ground, and if they do, gradually climb up to prevent stucking.
+	if(moveMode == Walk) for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++){
+		Vec3d hitcheck(pos[0] + (ix * 2 - 1) * boundWidth, pos[1] - eyeHeight, pos[2] + (iz * 2 - 1) * boundLength);
+		if(game.world->isSolid(hitcheck)){
+			trymove(Vec3d(0, 2. * dt, 0), false, true);
+			ix = 2; // Exit outer iteration
+			break;
+		}
+	}
+
+	trymove(velo * dt, false, false);
 	rot = Quatd::slerp(desiredRot, rot, exp(-dt * 5.));
 
 	*game.logwriter << "Player [" << pos[0] << "," << pos[1] << "," << pos[2] << "]" << std::endl;
@@ -90,8 +101,12 @@ void Player::keyinput(double dt){
 		moveMode = moveMode == Ghost ? Walk : Ghost;
 
 	// Toggle curtype
-	if (oldKeys['X'] & 0x80 && !(keys['X'] & 0x80))
-		curtype = (Cell::Type)(curtype % 3 + 1);
+	if (oldKeys['X'] & 0x80 && !(keys['X'] & 0x80)){
+		// Skip invalid type (HalfAir)
+		do
+			curtype = (Cell::Type)(curtype % (Cell::NumTypes - 1) + 1);
+		while(curtype == Cell::HalfAir);
+	}
 
 	// Dig the cell forward
 	if(oldKeys['T'] & 0x80 && !(keys['T'] & 0x80)){
@@ -101,7 +116,7 @@ void Player::keyinput(double dt){
 			Cell c = game.world->cell(ci[0], ci[1], ci[2]);
 			if (c.isSolid() && game.world->setCell(ci[0], ci[1], ci[2], Cell(Cell::Air)))
 			{
-				bricks[c.getType()] += 1;
+				addBricks(c.getType(), 1);
 				break;
 			}
 		}
@@ -109,7 +124,7 @@ void Player::keyinput(double dt){
 
 	// Place a solid cell next to another solid cell.
 	// Feasible only if the player has a brick.
-	if (oldKeys['G'] & 0x80 && !(keys['G'] & 0x80) && 0 < bricks[curtype]){
+	if (oldKeys['G'] & 0x80 && !(keys['G'] & 0x80) && 0 < getBricks(curtype)){
 		Vec3d dir = rot.itrans(Vec3d(0,0,1));
 		for (int i = 1; i < 8; i++){
 			Vec3i ci = World::real2ind(pos + dir * i / 2);
@@ -117,6 +132,11 @@ void Player::keyinput(double dt){
 			if(game.world->isSolid(ci[0], ci[1], ci[2]))
 				continue;
 
+			// Limit half cells to be on top of full-height cell.
+			if(curtype & Cell::HalfBit && game.world->cell(ci + Vec3i(0, -1, 0)).isTranslucent())
+				continue;
+
+			// If this placing makes the Player to be stuck in a brick, do not allow it.
 			bool buried = false;
 			for(int ix = 0; ix < 2 && !buried; ix++) for(int iz = 0; iz < 2 && !buried; iz++) for(int iy = 0; iy < 2 && !buried; iy++){
 				// Position to check collision with the walls
@@ -148,7 +168,7 @@ void Player::keyinput(double dt){
 
 			if(game.world->setCell(ci[0], ci[1], ci[2], Cell(curtype)))
 			{
-				bricks[curtype] -= 1;
+				addBricks(curtype, -1);
 				break;
 			}
 		}
@@ -170,8 +190,9 @@ void Player::keyinput(double dt){
 /// </summary>
 /// <param name="delta">Vector to add to current position to designate destination.</param>
 /// <param name="setvelo">Flag that tells delta really means velocity vector.</param>
+/// <param name="ignorefeet">Flag that tells the feet should not be checked for collision detection.</param>
 /// <returns>true if the movement is feasible, otherwise false and no movement is performed.</returns>
-bool Player::trymove(const Vec3d &delta, bool setvelo){
+bool Player::trymove(const Vec3d &delta, bool setvelo, bool ignorefeet){
 	if(setvelo){
 		velo += delta;
 		return true;
@@ -186,10 +207,22 @@ bool Player::trymove(const Vec3d &delta, bool setvelo){
 	Vec3d worldDeltaDir = worldDelta.norm();
 
 	if(moveMode != Ghost){
-		for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++) for(int iy = 0; iy < 2; iy++){
+		for(int ix = 0; ix < 2; ix++) for(int iz = 0; iz < 2; iz++) for(int iy = ignorefeet; iy < 2; iy++){
 			// Position to check collision with the walls
 			Vec3d hitcheck(dest[0] + (ix * 2 - 1) * boundWidth, dest[1] - eyeHeight + iy * boundHeight, dest[2] + (iz * 2 - 1) * boundLength);
-			if(game.world->isSolid(game.world->real2ind(hitcheck))){
+			if(game.world->isSolid(hitcheck)){
+
+				// If the player is goning into solid cell laterally, allow shallow sinking into floor, because that stuck state will be resolved automatically.
+				if(iy == 0 && worldDelta[1] == 0.){
+					double bh = game.world->boundaryHeight(hitcheck);
+					if(bh <= 0.5 && !game.world->isSolid(hitcheck + Vec3d(0, bh, 0))){
+						velo[1] = 0.;
+//						stepped = true;
+						floorTouched = true;
+						continue;
+					}
+				}
+
 				// Clear velocity component along delta direction
 				double vad = velo.sp(worldDeltaDir);
 				if(0 < vad){
@@ -210,6 +243,21 @@ void Player::rotateLook(double dx, double dy){
 	py[0] -= dy * M_PI / 2000.;
 	py[1] -= dx * M_PI / 2000.;
 	updateRot();
+}
+
+
+void Player::addBricks(Cell::Type t, int count){
+	if(t & Cell::HalfBit)
+		bricks[t & ~Cell::HalfBit] += count;
+	else
+		bricks[t] += count * 2;
+}
+
+int Player::getBricks(Cell::Type t){
+	if(t & Cell::HalfBit)
+		return bricks[t & ~Cell::HalfBit];
+	else
+		return bricks[t] / 2;
 }
 
 
