@@ -2,6 +2,7 @@
 #include "Game.h"
 #include "Player.h"
 #include "perlinNoise.h"
+#include "perlinNoise3d.h"
 #include <cpplib/vec3.h>
 #include <cpplib/vec4.h>
 #include <cpplib/quat.h>
@@ -30,21 +31,25 @@ int CellVolume::cellForeignExists = 0;
 void CellVolume::initialize(const Vec3i &ci){
 	float field[CELLSIZE][CELLSIZE];
 
-	PerlinNoise::PerlinNoiseParams pnp(12321, 0.5);
+	PerlinNoise::PerlinNoiseParams3D pnp(12321, 0.5);
 	pnp.octaves = 7;
 	pnp.xofs = ci[0] * CELLSIZE;
 	pnp.yofs = ci[2] * CELLSIZE;
+	pnp.zofs = ci[1] * CELLSIZE;
 	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(field));
 
-	float grassFactor[CELLSIZE][CELLSIZE];
+	pnp.octaves = 7;
+	pnp.yofs = ci[1] * CELLSIZE;
+	pnp.zofs = ci[2] * CELLSIZE;
+	float grassFactor[CELLSIZE][CELLSIZE][CELLSIZE];
 	pnp.seed = 54123;
-	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(grassFactor));
-	float dirtFactor[CELLSIZE][CELLSIZE];
+	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(grassFactor));
+	float dirtFactor[CELLSIZE][CELLSIZE][CELLSIZE];
 	pnp.seed = 112398;
-	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(dirtFactor));
-	float gravelFactor[CELLSIZE][CELLSIZE];
+	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(dirtFactor));
+	float gravelFactor[CELLSIZE][CELLSIZE][CELLSIZE];
 	pnp.seed = 93532;
-	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(gravelFactor));
+	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(gravelFactor));
 
 #if 0
 	int values[CELLSIZE][CELLSIZE][CELLSIZE] = {0};
@@ -72,17 +77,30 @@ void CellVolume::initialize(const Vec3i &ci){
 #endif
 
 	_solidcount = 0;
-	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
-		Cell::Type ct;
-		if (dirtFactor[ix][iz] < grassFactor[ix][iz] && gravelFactor[ix][iz] < grassFactor[ix][iz])
-			ct = Cell::Grass;
-		else if (grassFactor[ix][iz] < dirtFactor[ix][iz] && grassFactor[ix][iz] < dirtFactor[ix][iz])
-			ct = Cell::Dirt;
-		else
-			ct = Cell::Gravel;
-		v[ix][iy][iz] = Cell(/*values[ix][iy][iz] ? Cell::Dirt :*/ field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : ct);
-		if(v[ix][iy][iz].type != Cell::Air)
-			_solidcount++;
+	for(int ix = 0; ix < CELLSIZE; ix++) for(int iz = 0; iz < CELLSIZE; iz++){
+		// Compute the height first. The height is distance from the surface just below the cell of interest,
+		// can be negative when it's below surface.
+		int baseHeight = ci[1] * CELLSIZE - (int)floor(field[ix][iz] * CELLSIZE * 2);
+
+		for(int iy = 0; iy < CELLSIZE; iy++){
+			int height = iy + baseHeight;
+
+			if(0 < height)
+				v[ix][iy][iz] = Cell();
+			else{
+				float grassness = 0 < height || height < -10 ? 0 : grassFactor[ix][iy][iz] / (1 << -height);
+
+				Cell::Type ct;
+				if (dirtFactor[ix][iy][iz] < grassness && gravelFactor[ix][iy][iz] < grassness)
+					ct = Cell::Grass;
+				else if (gravelFactor[ix][iy][iz] < dirtFactor[ix][iy][iz])
+					ct = Cell::Dirt;
+				else
+					ct = Cell::Gravel;
+				v[ix][iy][iz] = Cell(ct);
+				_solidcount++;
+			}
+		}
 	}
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		updateAdj(ix, iy, iz);
@@ -104,7 +122,7 @@ void World::initialize(){
 /// <returns>indices</returns>
 Vec3i World::real2ind(const Vec3d &pos){
 	Vec3d tpos = pos;
-	Vec3i vi(floor(tpos[0]), floor(tpos[1]), floor(tpos[2]));
+	Vec3i vi((int)floor(tpos[0]), (int)floor(tpos[1]), (int)floor(tpos[2]));
 	return vi + Vec3i(CELLSIZE, CELLSIZE, CELLSIZE) / 2;
 }
 

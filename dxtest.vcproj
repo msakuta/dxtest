@@ -359,6 +359,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\perlinNoise3d.h"
+				>
+			</File>
+			<File
 				RelativePath=".\Player.h"
 				>
 			</File>

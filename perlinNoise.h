@@ -114,7 +114,7 @@ void perlin_noise(const PerlinNoiseParams &param, PerlinNoiseCallback &callback)
 
 	// Return result
 	for(int xi = 0; xi < CELLSIZE; xi++) for(int yi = 0; yi < CELLSIZE; yi++){
-		callback((double)work2[xi][yi] / baseMax / sumfactor, xi, yi);
+		callback(float((double)work2[xi][yi] / baseMax / sumfactor), xi, yi);
 	}
 }
 
