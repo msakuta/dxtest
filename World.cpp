@@ -46,6 +46,31 @@ void CellVolume::initialize(const Vec3i &ci){
 	pnp.seed = 93532;
 	PerlinNoise::perlin_noise<CELLSIZE>(pnp, PerlinNoise::FieldAssign<CELLSIZE>(gravelFactor));
 
+#if 0
+	int values[CELLSIZE][CELLSIZE][CELLSIZE] = {0};
+	for(int iz = 0; iz < CELLSIZE; iz++){
+		int fz = iz + ci[2] * CELLSIZE + 115;
+		if(fz < 0)
+			continue;
+		if(230 <= fz)
+			break;
+		char cbuf[256];
+		sprintf(cbuf, "s2\\Co-2-%d.txt", iz);
+		FILE *fp = fopen(cbuf, "r");
+		for(int fy = 0; fy < 2048; fy++){
+			int iy = fy - ci[1] * CELLSIZE - 385;
+			for(int fx = 0; fx < 224; fx++){
+				int ix = fx - ci[0] * CELLSIZE - 112;
+				int val;
+				fscanf(fp, "%d\t", &val);
+				if(0 <= iy && iy < CELLSIZE && 0 <= ix && ix < CELLSIZE)
+					values[iz][iy][ix] = val;
+			}
+		}
+		fclose(fp);
+	}
+#endif
+
 	_solidcount = 0;
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		Cell::Type ct;
@@ -55,13 +80,14 @@ void CellVolume::initialize(const Vec3i &ci){
 			ct = Cell::Dirt;
 		else
 			ct = Cell::Gravel;
-		v[ix][iy][iz] = Cell(field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : ct);
+		v[ix][iy][iz] = Cell(/*values[ix][iy][iz] ? Cell::Dirt :*/ field[ix][iz] * CELLSIZE * 2 < iy + ci[1] * CELLSIZE ? Cell::Air : ct);
 		if(v[ix][iy][iz].type != Cell::Air)
 			_solidcount++;
 	}
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < CELLSIZE; iz++){
 		updateAdj(ix, iy, iz);
 	}
+
 }
 
 World::World(Game &agame) : game(agame), volume(operator<){

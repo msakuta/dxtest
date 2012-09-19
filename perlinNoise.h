@@ -7,10 +7,10 @@
 #include <stdio.h>
 extern "C"{
 #include <clib/rseq.h>
-#include <clib/random/mt19937ar.h>
+//#include <clib/random/mt19937ar.h>
 #include <clib/timemeas.h>
 }
-#include <clib/random/tinymt32.h>
+//#include <clib/random/tinymt32.h>
 #include <cpplib/RandomSequence.h>
 #include "SignModulo.h"
 

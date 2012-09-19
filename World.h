@@ -36,6 +36,8 @@ public:
 
 	Cell(Type t = Air) : type(t), adjacents(0){}
 	Type getType()const{return type;}
+	short getValue()const{return value;}
+	void setValue(short avalue){value = avalue;}
 	int getAdjacents()const{return adjacents;}
 	bool isSolid()const{return type != Air;}
 	bool isTranslucent()const{return type == Air || type & HalfBit;}
@@ -43,7 +45,8 @@ public:
 	void unserialize(std::istream &i);
 protected:
 	enum Type type;
-	int adjacents;
+	short value;
+	short adjacents;
 
 	friend class CellVolume;
 };
