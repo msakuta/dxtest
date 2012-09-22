@@ -671,6 +671,8 @@ void dxtest::Game::draw(double dt)const{
 		g_font->DrawTextA(NULL, dstring() << "pos: " << player->pos[0] << ", " << player->pos[1] << ", " << player->pos[2], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 		rct.top += 20, rct.bottom += 20;
 		g_font->DrawTextA(NULL, dstring() << "bricks: " << player->bricks[1] << ", " << player->bricks[2] << ", " << player->bricks[3], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		rct.top += 20, rct.bottom += 20;
+		g_font->DrawTextA(NULL, dstring() << "abund: " << world->getBricks(1) << ", " << world->getBricks(2) << ", " << world->getBricks(3), -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 
 		pdev->EndScene();
 	}

@@ -27,19 +27,19 @@ public:
 	virtual void operator()(float, int ix, int iy, int iz) = 0;
 };
 
-/// \brief Callback object that will assign noise values to float 2-d array field.
+/// \brief Callback object that will assign noise values to float 3-d array field.
 template<int CELLSIZE>
-class FieldAssign3D : public PerlinNoiseCallback3D{
+class FieldAssign3D/* : public PerlinNoiseCallback3D*/{
 	typedef float (&fieldType)[CELLSIZE][CELLSIZE][CELLSIZE];
 	fieldType field;
 public:
 	FieldAssign3D(fieldType field) : field(field){}
-	void operator()(float f, int ix, int iy, int iz){
-		field[ix][iy][iz] = f;
+	void operator()(int f, double maxi, int ix, int iy, int iz){
+		field[ix][iy][iz] = float(f / maxi);
 	}
 };
 
-/// \brief Parameters given to perlin_noise.
+/// \brief Parameters given to perlin_noise_3D(), sharing common parameters with 2D.
 struct PerlinNoiseParams3D : PerlinNoiseParams{
 	int zofs;
 
@@ -60,20 +60,65 @@ inline void perlin_noise_3D(long seed, PerlinNoiseCallback &callback, int xofs =
 	perlin_noise_3D<CELLSIZE>(PerlinNoiseParams3D(seed, 0.5, xofs, yofs, zofs), callback);
 }
 
+#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
+
+#define final(a,b,c) \
+{ \
+  c ^= b; c -= rot(b,14); \
+  a ^= c; a -= rot(c,11); \
+  b ^= a; b -= rot(a,25); \
+  c ^= b; c -= rot(b,16); \
+  a ^= c; a -= rot(c,4);  \
+  b ^= a; b -= rot(a,14); \
+  c ^= b; c -= rot(b,24); \
+}
+
 /// \brief Generate Perlin Noise and return it through callback.
+/// \param CELLSIZE The cell size in voxels.
+/// \param Callback The type for callback object. Can be a function or a functionoid.
 /// \param param Parameters to generate the noise.
 /// \param callback Callback object to receive the result.
-template<int CELLSIZE>
-void perlin_noise_3D(const PerlinNoiseParams3D &param, PerlinNoiseCallback3D &callback){
+template<int CELLSIZE, typename Callback>
+void perlin_noise_3D(const PerlinNoiseParams3D &param, Callback &callback){
 	static const int baseMax = 255;
 
 	struct Random{
-		RandomSequence rs;
+/*		RandomSequence rs;
 		Random(long seed, long x, long y, long z) : rs(seed ^ x ^ (z << 16), y ^ ((unsigned long)z >> 16)){
 		}
 		unsigned long next(){
 			unsigned long u = rs.next();
 			return (u >> 8) & 0xf0 + (u & 0xf);
+		}*/
+		static unsigned long gen(unsigned long seed, int x, int y, int z){
+			return RandomSequence(seed ^ x ^ (z << 16), y ^ ((unsigned long)z >> 16)).next() / (ULONG_MAX / baseMax);
+/*			unsigned long idum = seed;
+			unsigned long state = 0xdeadbeef;
+			for(int i = 0; i < 32; i++){
+				idum = 1664525L * idum + 1013904223L;
+				state ^= idum & (x << (31 - i) >> 31);
+			}
+			for(int i = 0; i < 32; i++){
+				idum = 1664525L * idum + 1013904223L;
+				state ^= idum & (y << (31 - i) >> 31);
+			}
+			for(int i = 0; i < 32; i++){
+				idum = 1664525L * idum + 1013904223L;
+				state ^= idum & (z << (31 - i) >> 31);
+			}
+			return state / (ULONG_MAX / baseMax);*/
+/*			unsigned long idum = seed;
+			unsigned long state = 0xdeadbeef;
+			idum = 1664525L * idum + 1013904223L;
+			state ^= 1664525L * (idum ^ (unsigned long)x) + 1013904223L;
+			idum = 1664525L * idum + 1013904223L;
+			state ^= 1664525L * (idum ^ (unsigned long)y) + 1013904223L;
+			idum = 1664525L * idum + 1013904223L;
+			state ^= 1664525L * (idum ^ (unsigned long)z) + 1013904223L;
+			return state / (ULONG_MAX / baseMax);*/
+//			final(x,y,z);
+//			z += seed;
+//			return (1664525L * z + 1013904223L) / (ULONG_MAX / baseMax);
 		}
 	};
 
@@ -90,7 +135,7 @@ void perlin_noise_3D(const PerlinNoiseParams3D &param, PerlinNoiseCallback3D &ca
 		int cell = 1 << octave;
 		if(octave == 0){
 			for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++) for(zi = 0; zi < CELLSIZE; zi++)
-				work2[xi][yi][zi] = Random(param.seed, (xi + param.xofs), (yi + param.yofs), zi + param.zofs).next();
+				work2[xi][yi][zi] = Random::gen(param.seed, (xi + param.xofs), (yi + param.yofs), zi + param.zofs);
 		}
 		else for(xi = 0; xi < CELLSIZE; xi++) for(yi = 0; yi < CELLSIZE; yi++) for(zi = 0; zi < CELLSIZE; zi++){
 			int xj, yj, zj;
@@ -101,11 +146,24 @@ void perlin_noise_3D(const PerlinNoiseParams3D &param, PerlinNoiseCallback3D &ca
 			int xsd = SignDiv(xi + param.xofs, cell);
 			int ysd = SignDiv(yi + param.yofs, cell);
 			int zsd = SignDiv(zi + param.zofs, cell);
-			for(xj = 0; xj <= 1; xj++) for(yj = 0; yj <= 1; yj++) for(zj = 0; zj <= 1; zj++){
-				sum += (double)(Random(param.seed, (xsd + xj), (ysd + yj), zsd + zj).next())
-				* (xj ? xsm : (cell - xsm - 1)) / (double)cell
-				* (yj ? ysm : (cell - ysm - 1)) / (double)cell
-				* (zj ? zsm : (cell - zsm - 1)) / (double)cell;
+			for(xj = 0; xj <= 1; xj++){
+				int xfactor = xj ? xsm : (cell - xsm - 1);
+				if(xfactor == 0) // Skip rest of this iteration if factor is 0
+					continue;
+				for(yj = 0; yj <= 1; yj++){
+					int yfactor = yj ? ysm : (cell - ysm - 1);
+					if(yfactor == 0) // Skip rest of this iteration if factor is 0
+						continue;
+					for(zj = 0; zj <= 1; zj++){
+						int zfactor = zj ? zsm : (cell - zsm - 1);
+						if(zfactor == 0) // Skip rest of this iteration if factor is 0
+							continue;
+						sum += (double)(Random::gen(param.seed, (xsd + xj), (ysd + yj), zsd + zj))
+						* xfactor / (double)cell
+						* yfactor / (double)cell
+						* zfactor / (double)cell;
+					}
+				}
 			}
 			work2[xi][yi][zi] += (int)(sum * factor);
 		}
@@ -115,7 +173,7 @@ void perlin_noise_3D(const PerlinNoiseParams3D &param, PerlinNoiseCallback3D &ca
 
 	// Return result
 	for(int xi = 0; xi < CELLSIZE; xi++) for(int yi = 0; yi < CELLSIZE; yi++) for(int zi = 0; zi < CELLSIZE; zi++){
-		callback(float((double)work2[xi][yi][zi] / baseMax / sumfactor), xi, yi, zi);
+		callback(work2[xi][yi][zi], baseMax * sumfactor, xi, yi, zi);
 	}
 }
 

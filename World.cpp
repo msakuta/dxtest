@@ -97,6 +97,7 @@ void CellVolume::initialize(const Vec3i &ci){
 					ct = Cell::Dirt;
 				else
 					ct = Cell::Gravel;
+				world->bricks[ct]++;
 				v[ix][iy][iz] = Cell(ct);
 				_solidcount++;
 			}
@@ -110,6 +111,8 @@ void CellVolume::initialize(const Vec3i &ci){
 
 World::World(Game &agame) : game(agame), volume(operator<){
 	game.world = this;
+	for(int i = 0; i < Cell::NumTypes; i++)
+		bricks[i] = 0;
 }
 
 void World::initialize(){

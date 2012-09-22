@@ -66,12 +66,15 @@ protected:
 	int _scanLines[CELLSIZE][CELLSIZE][2];
 
 	int _solidcount;
+	int bricks[Cell::NumTypes];
 
 	void updateAdj(int ix, int iy, int iz);
 public:
 	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind), _solidcount(0){
 		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++)
 			_scanLines[ix][iy][iz] = 0;
+		for(int i = 0; i < Cell::NumTypes; i++)
+			bricks[i] = 0;
 	}
 	const Vec3i &getIndex()const{return index;}
 	const Cell &operator()(int ix, int iy, int iz)const;
@@ -93,6 +96,7 @@ public:
 		return _scanLines;
 	}
 	int getSolidCount()const{return _solidcount;}
+	int getBricks(int i)const{return bricks[i];}
 
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
@@ -125,6 +129,8 @@ public:
 	VolumeMap volume;
 
 	Game &game;
+
+	int bricks[Cell::NumTypes];
 
 	void initialize();
 	static Vec3i real2ind(const Vec3d &pos);
@@ -159,6 +165,10 @@ public:
 
 	bool isSolid(const Vec3i &v);
 	bool isSolid(const Vec3d &rv);
+
+	int getBricks(int i){
+		return bricks[i];
+	}
 
 	double boundaryHeight(const Vec3d &rv);
 
