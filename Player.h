@@ -94,7 +94,7 @@ public:
 	/// <summary>
 	/// The brick materials the Player has.
 	/// </summary>
-	int bricks[4];
+	int bricks[5];
 };
 
 }

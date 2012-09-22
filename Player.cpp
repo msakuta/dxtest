@@ -103,9 +103,13 @@ void Player::keyinput(double dt){
 	// Toggle curtype
 	if (oldKeys['X'] & 0x80 && !(keys['X'] & 0x80)){
 		// Skip invalid type (HalfAir)
-		do
+		do{
 			curtype = (Cell::Type)(curtype % (Cell::NumTypes - 1) + 1);
-		while(curtype == Cell::HalfAir);
+			const unsigned map = 1 << Cell::Grass | 1 << Cell::Dirt | 1 << Cell::Gravel | 1 << Cell::Rock;
+			unsigned bit = 1 << (curtype & ~Cell::HalfBit);
+			if(map & bit)
+				break;
+		} while(true);
 	}
 
 	// Dig the cell forward

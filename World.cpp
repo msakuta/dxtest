@@ -41,15 +41,12 @@ void CellVolume::initialize(const Vec3i &ci){
 	pnp.octaves = 7;
 	pnp.yofs = ci[1] * CELLSIZE;
 	pnp.zofs = ci[2] * CELLSIZE;
-	float grassFactor[CELLSIZE][CELLSIZE][CELLSIZE];
-	pnp.seed = 54123;
-	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(grassFactor));
-	float dirtFactor[CELLSIZE][CELLSIZE][CELLSIZE];
-	pnp.seed = 112398;
-	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(dirtFactor));
-	float gravelFactor[CELLSIZE][CELLSIZE][CELLSIZE];
-	pnp.seed = 93532;
-	PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(gravelFactor));
+	float cellFactorTable[4][CELLSIZE][CELLSIZE][CELLSIZE];
+	const unsigned long seeds[4] = {54123, 112398, 93532, 3417453};
+	for(int i = 0; i < 4; i++){
+		pnp.seed = seeds[i];
+		PerlinNoise::perlin_noise_3D<CELLSIZE>(pnp, PerlinNoise::FieldAssign3D<CELLSIZE>(cellFactorTable[i]));
+	}
 
 #if 0
 	int values[CELLSIZE][CELLSIZE][CELLSIZE] = {0};
@@ -88,15 +85,20 @@ void CellVolume::initialize(const Vec3i &ci){
 			if(0 < height)
 				v[ix][iy][iz] = Cell();
 			else{
-				float grassness = 0 < height || height < -10 ? 0 : grassFactor[ix][iy][iz] / (1 << -height);
+				float grassness = 0 < height || height < -10 ? 0 : cellFactorTable[0][ix][iy][iz] / (1 << -height);
+				float dirtness = cellFactorTable[1][ix][iy][iz];
+				float gravelness = cellFactorTable[2][ix][iy][iz];
+				float rockness = cellFactorTable[3][ix][iy][iz] * (height < 0 ? 1.25 - 0.5 / (1. - height / 16.) : 0.75);
 
 				Cell::Type ct;
-				if (dirtFactor[ix][iy][iz] < grassness && gravelFactor[ix][iy][iz] < grassness)
+				if (dirtness < grassness && gravelness < grassness && rockness < grassness)
 					ct = Cell::Grass;
-				else if (gravelFactor[ix][iy][iz] < dirtFactor[ix][iy][iz])
+				else if (gravelness < dirtness && rockness < dirtness)
 					ct = Cell::Dirt;
-				else
+				else if(rockness < gravelness)
 					ct = Cell::Gravel;
+				else
+					ct = Cell::Rock;
 				world->bricks[ct]++;
 				v[ix][iy][iz] = Cell(ct);
 				_solidcount++;

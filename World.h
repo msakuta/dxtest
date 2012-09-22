@@ -26,11 +26,13 @@ public:
 		Grass, ///< Grass cell
 		Dirt, ///< Dirt cell
 		Gravel, ///< Gravel cell
-		HalfBit = 0x4, ///< Bit indicating half height of base material.
+		Rock, ///< Rock cell
+		HalfBit = 0x8, ///< Bit indicating half height of base material.
 		HalfAir = HalfBit | Air, ///< This does not really exist, just a theoretical entity.
 		HalfGrass = HalfBit | Grass, ///< Half-height Grass.
 		HalfDirt = HalfBit | Dirt,
 		HalfGravel = HalfBit | Gravel,
+		HalfRock = HalfBit | Rock,
 		NumTypes
 	};
 

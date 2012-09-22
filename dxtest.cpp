@@ -31,8 +31,8 @@ IDirect3D9 *pd3d;
 IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
-LPDIRECT3DTEXTURE9      g_pTextures[4] = {NULL}; // Our texture
-const char *textureNames[4] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png"};
+LPDIRECT3DTEXTURE9      g_pTextures[5] = {NULL}; // Our texture
+const char *textureNames[5] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg"};
 LPD3DXFONT g_font;
 LPD3DXSPRITE g_sprite;
 
@@ -630,36 +630,53 @@ void dxtest::Game::draw(double dt)const{
 		{
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
 			D3DXMATRIX mat, matscale, mattrans;
-			static const Cell::Type types[] = {Cell::Grass, Cell::Dirt, Cell::Gravel, Cell::HalfGrass, Cell::HalfDirt, Cell::HalfGravel};
-			static const float scales[] = {1, 0.125f, 0.5f, 0.5f};
-			static const int sizes[] = {64, 512, 128, 128};
+			struct TextureData{
+				float scale;
+				int size;
+				int index;
+			};
+			struct MaterialData{
+				const TextureData &tex;
+				Cell::Type type;
+			};
+			static const TextureData textureData[] = {
+				{1, 64, 0},
+				{0.125f, 512, 1},
+				{0.5f, 128, 2},
+				{0.5f, 128, 3},
+				{1.0f, 64, 4}
+			};
+			static const MaterialData types[] = {{textureData[1], Cell::Grass}, {textureData[2], Cell::Dirt}, {textureData[3], Cell::Gravel},
+			{textureData[4], Cell::Rock}, {textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}};
+//			static const int sizes[] = {64, 512, 128, 128, 64};
 			D3DRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
 			
 			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
-			for(int h = 0; h < numof(types); h++){
-				int i = types[h] % numof(g_pTextures);
-				Cell::Type t = types[h];
+			for(int i = 0; i < numof(types); i++){
+				const MaterialData &type = types[i];
+				Cell::Type t = type.type;
 				bool half = t & Cell::HalfBit;
 
-				D3DXMatrixScaling( &matscale, scales[i], scales[i], 1. );
-				D3DXMatrixTranslation(&mattrans, (h - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64 + (half ? 32 : 0), 0);
+				D3DXMatrixScaling( &matscale, type.tex.scale, type.tex.scale, 1. );
+				D3DXMatrixTranslation(&mattrans, (i - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64 + (half ? 32 : 0), 0);
 				D3DXMatrixMultiply(&mat, &matscale, &mattrans);
 				g_sprite->SetTransform(&mat);
 				g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
-				RECT srcrect = {0, (half ? sizes[i] / 2 : 0), sizes[i], sizes[i]};
-				g_sprite->Draw(g_pTextures[i], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
+				RECT srcrect = {0, (half ? type.tex.size / 2 : 0), type.tex.size, type.tex.size};
+				g_sprite->Draw(g_pTextures[type.tex.index], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
 					D3DCOLOR_ARGB(player->curtype == t ? 255 : 127,255,255,255));
 				g_sprite->End();
 
 				// Show cursor
 				if(player->curtype == t){
+					D3DXMatrixTranslation(&mattrans, (i - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0);
 					g_sprite->SetTransform(&mattrans);
 					g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
 					g_sprite->Draw(g_pTextures[0], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
 						D3DCOLOR_ARGB(255,255,255,255));
 					g_sprite->End();
 				}
-				r.left = (h - numof(types) / 2) * 64 + windowWidth / 2;
+				r.left = (i - numof(types) / 2) * 64 + windowWidth / 2;
 				r.right = r.left + 64;
 				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 			}
@@ -670,9 +687,9 @@ void dxtest::Game::draw(double dt)const{
 		rct.top += 20, rct.bottom += 20;
 		g_font->DrawTextA(NULL, dstring() << "pos: " << player->pos[0] << ", " << player->pos[1] << ", " << player->pos[2], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 		rct.top += 20, rct.bottom += 20;
-		g_font->DrawTextA(NULL, dstring() << "bricks: " << player->bricks[1] << ", " << player->bricks[2] << ", " << player->bricks[3], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		g_font->DrawTextA(NULL, dstring() << "bricks: " << player->bricks[1] << ", " << player->bricks[2] << ", " << player->bricks[3] << ", " << player->bricks[4], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 		rct.top += 20, rct.bottom += 20;
-		g_font->DrawTextA(NULL, dstring() << "abund: " << world->getBricks(1) << ", " << world->getBricks(2) << ", " << world->getBricks(3), -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		g_font->DrawTextA(NULL, dstring() << "abund: " << world->getBricks(1) << ", " << world->getBricks(2) << ", " << world->getBricks(3) << ", " << world->getBricks(4), -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 
 		pdev->EndScene();
 	}
