@@ -72,6 +72,8 @@ public:
 	static const double runspeed; ///< Run speed [meters per second]
 	static const double jumpspeed; ///< Speed set vertically when jumping [meters per second]
 	static const double rotatespeed; ///< pi / 2, means it takes 4 seconds to look all the way around.
+	static const double gravity; ///< Gravity acceleration
+	static const double swimUpAccel; ///< Acceleration of swimming upward in water.
 
 	BYTE oldKeys[256];
 

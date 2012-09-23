@@ -32,7 +32,7 @@ void CellVolume::initialize(const Vec3i &ci){
 	float field[CELLSIZE][CELLSIZE];
 
 	PerlinNoise::PerlinNoiseParams3D pnp(12321, 0.5);
-	pnp.octaves = 7;
+	pnp.octaves = 8;
 	pnp.xofs = ci[0] * CELLSIZE;
 	pnp.yofs = ci[2] * CELLSIZE;
 	pnp.zofs = ci[1] * CELLSIZE;
@@ -77,13 +77,13 @@ void CellVolume::initialize(const Vec3i &ci){
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iz = 0; iz < CELLSIZE; iz++){
 		// Compute the height first. The height is distance from the surface just below the cell of interest,
 		// can be negative when it's below surface.
-		int baseHeight = ci[1] * CELLSIZE - (int)floor(field[ix][iz] * CELLSIZE * 2);
+		int baseHeight = ci[1] * CELLSIZE - ((int)floor(field[ix][iz] * CELLSIZE * 4) - 40);
 
 		for(int iy = 0; iy < CELLSIZE; iy++){
 			int height = iy + baseHeight;
 
 			if(0 < height)
-				v[ix][iy][iz] = Cell();
+				v[ix][iy][iz] = Cell(ci[1] * CELLSIZE + iy < 0 ? Cell::Water : Cell::Air);
 			else{
 				float grassness = 0 < height || height < -10 ? 0 : cellFactorTable[0][ix][iy][iz] / (1 << -height);
 				float dirtness = cellFactorTable[1][ix][iy][iz];
@@ -208,6 +208,13 @@ void CellVolume::updateAdj(int ix, int iy, int iz){
         (!cell(ix, iy + 1, iz).isTranslucent() ? 1 : 0) +
         (!cell(ix, iy, iz - 1).isTranslucent() ? 1 : 0) +
         (!cell(ix, iy, iz + 1).isTranslucent() ? 1 : 0);
+	v[ix][iy][iz].adjacentWater =
+		(cell(ix - 1, iy, iz).getType() == Cell::Water ? 1 : 0) +
+        (cell(ix + 1, iy, iz).getType() == Cell::Water ? 1 : 0) +
+        (cell(ix, iy - 1, iz).getType() == Cell::Water ? 1 : 0) +
+        (cell(ix, iy + 1, iz).getType() == Cell::Water ? 1 : 0) +
+        (cell(ix, iy, iz - 1).getType() == Cell::Water ? 1 : 0) +
+        (cell(ix, iy, iz + 1).getType() == Cell::Water ? 1 : 0);
 }
 
 void CellVolume::updateCache()
@@ -220,6 +227,7 @@ void CellVolume::updateCache()
 	{
 		// Find start and end points for this scan line
 		bool begun = false;
+		bool transBegun = false;
 		for (int iy = 0; iy < CELLSIZE; iy++)
 		{
 			Cell &c = v[ix][iy][iz];
@@ -231,6 +239,14 @@ void CellVolume::updateCache()
 					_scanLines[ix][iz][0] = iy;
 				}
 				_scanLines[ix][iz][1] = iy + 1;
+			}
+
+			if(c.type == Cell::Water && c.adjacents != 6 && c.adjacentWater != 6 && c.adjacents + c.adjacentWater != 6){
+				if(!transBegun){
+					transBegun = true;
+					tranScanLines[ix][iz][0] = iy;
+				}
+				tranScanLines[ix][iz][1] = iy + 1;
 			}
 		}
 	}

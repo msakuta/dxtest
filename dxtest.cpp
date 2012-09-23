@@ -31,8 +31,8 @@ IDirect3D9 *pd3d;
 IDirect3DDevice9 *pdev;
 LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
 LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
-LPDIRECT3DTEXTURE9      g_pTextures[5] = {NULL}; // Our texture
-const char *textureNames[5] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg"};
+LPDIRECT3DTEXTURE9      g_pTextures[6] = {NULL}; // Our texture
+const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg", "water.png"};
 LPD3DXFONT g_font;
 LPD3DXSPRITE g_sprite;
 
@@ -539,6 +539,8 @@ void dxtest::Game::draw(double dt)const{
 
 		const Vec3i inf = World::real2ind(player->getPos());
 
+		// The first pass only draws solid cells.
+		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
 			const Vec3i &key = it->first;
 			CellVolume &cv = it->second;
@@ -598,6 +600,10 @@ void dxtest::Game::draw(double dt)const{
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
+
+						if(cell.getType() == Cell::Water)
+							continue;
+
 						if(cell.getType() & Cell::HalfBit){
 							D3DXMATRIXA16 matscale, matresult;
 							D3DXMatrixScaling(&matscale, 1, 0.5, 1.);
@@ -627,6 +633,106 @@ void dxtest::Game::draw(double dt)const{
 			}
 		}
 
+		int pass = 0;
+		int all = 0;
+
+		// The second pass draw transparent objects
+		pdev->SetTexture(0, g_pTextures[Cell::Water]);
+		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+		pdev->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);
+		pdev->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
+		pdev->SetRenderState(D3DRS_BLENDOP,D3DBLENDOP_ADD);
+		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
+			const Vec3i &key = it->first;
+			CellVolume &cv = it->second;
+
+			// If all content is air, skip drawing
+			if(cv.getSolidCount() == 0)
+				continue;
+
+			// Examine if intersects or included in viewing frustum
+			if(!FrustumCheck((D3DXVECTOR3)World::ind2real(key * CELLSIZE).cast<float>(), (D3DXVECTOR3)World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>(), frustum))
+				continue;
+
+			// Cull too far CellVolumes
+			if ((key[0] + 1) * CELLSIZE + maxViewDistance < inf[0])
+				continue;
+			if (inf[0] < key[0] * CELLSIZE - maxViewDistance)
+				continue;
+			if ((key[1] + 1) * CELLSIZE + maxViewDistance < inf[1])
+				continue;
+			if (inf[1] < key[1] * CELLSIZE - maxViewDistance)
+				continue;
+			if ((key[2] + 1) * CELLSIZE + maxViewDistance < inf[2])
+				continue;
+			if (inf[2] < key[2] * CELLSIZE - maxViewDistance)
+				continue;
+
+			for(int ix = 0; ix < CELLSIZE; ix++){
+				for(int iz = 0; iz < CELLSIZE; iz++){
+					// This detail culling is not much effective.
+					//if (bf.Contains(new BoundingBox(ind2real(keyindex + new Vec3i(ix, kv.Value.scanLines[ix, iz, 0], iz)), ind2real(keyindex + new Vec3i(ix + 1, kv.Value.scanLines[ix, iz, 1] + 1, iz + 1)))) != ContainmentType.Disjoint)
+					const int (&scanLines)[CELLSIZE][CELLSIZE][2] = cv.getTranScanLines();
+					for (int iy = scanLines[ix][iz][0]; iy < scanLines[ix][iz][1]; iy++){
+						const Cell &cell = cv(ix, iy, iz);
+						all++;
+
+						// Cull too far Cells
+						if (cell.getType() != Cell::Water)
+							continue;
+						if (maxViewDistance < abs(ix + it->first[0] * CELLSIZE - inf[0]))
+							continue;
+						if (maxViewDistance < abs(iy + it->first[1] * CELLSIZE - inf[1]))
+							continue;
+						if (maxViewDistance < abs(iz + it->first[2] * CELLSIZE - inf[2]))
+							continue;
+
+						// If the Cell is buried under ground, it's no use examining each face of the Cell.
+						if(6 <= cell.getAdjacents())
+							continue;
+
+						bool x0 = !cv(ix - 1, iy, iz).isTranslucent();
+						bool x1 = !cv(ix + 1, iy, iz).isTranslucent();
+						bool y0 = !cv(ix, iy - 1, iz).isTranslucent();
+						bool y1 = !cv(ix, iy + 1, iz).isTranslucent();
+						bool z0 = !cv(ix, iy, iz - 1).isTranslucent();
+						bool z1 = !cv(ix, iy, iz + 1).isTranslucent();
+						D3DXMatrixTranslation(&matWorld,
+							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
+							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
+							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
+
+						x0 |= cv(ix - 1, iy, iz).getType() != cell.Air;
+						x1 |= cv(ix + 1, iy, iz).getType() != cell.Air;
+						y0 |= cv(ix, iy - 1, iz).getType() != cell.Air;
+						y1 |= cv(ix, iy + 1, iz).getType() != cell.Air;
+						z0 |= cv(ix, iy, iz - 1).getType() != cell.Air;
+						z1 |= cv(ix, iy, iz + 1).getType() != cell.Air;
+
+						pdev->SetTransform(D3DTS_WORLD, &matWorld);
+
+						if(!x0 && !x1 && !y0 && !y1)
+							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+						else{
+							if(!x0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 8 * 3, 2 );
+							if(!x1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 10 * 3, 2 );
+							if(!y0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 2 );
+							if(!y1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 2 * 3, 2 );
+							if(!z0)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 4 * 3, 2 );
+							if(!z1)
+								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 6 * 3, 2 );
+						}
+						pass += !x0 || !x1 || !y0 || !y1 || !z0 || !z1;
+					}
+				}
+			}
+		}
+
 		{
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
 			D3DXMATRIX mat, matscale, mattrans;
@@ -644,11 +750,13 @@ void dxtest::Game::draw(double dt)const{
 				{0.125f, 512, 1},
 				{0.5f, 128, 2},
 				{0.5f, 128, 3},
-				{1.0f, 64, 4}
+				{1.0f, 64, 4},
+				{1.0f, 64, 5}
 			};
-			static const MaterialData types[] = {{textureData[1], Cell::Grass}, {textureData[2], Cell::Dirt}, {textureData[3], Cell::Gravel},
-			{textureData[4], Cell::Rock}, {textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}};
-//			static const int sizes[] = {64, 512, 128, 128, 64};
+			static const MaterialData types[] = {
+				{textureData[1], Cell::Grass}, {textureData[2], Cell::Dirt}, {textureData[3], Cell::Gravel}, {textureData[4], Cell::Rock},
+				{textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}
+			};
 			D3DRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
 			
 			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
@@ -687,9 +795,13 @@ void dxtest::Game::draw(double dt)const{
 		rct.top += 20, rct.bottom += 20;
 		g_font->DrawTextA(NULL, dstring() << "pos: " << player->pos[0] << ", " << player->pos[1] << ", " << player->pos[2], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 		rct.top += 20, rct.bottom += 20;
+		g_font->DrawTextA(NULL, dstring() << "velo: " << player->velo[0] << ", " << player->velo[1] << ", " << player->velo[2], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		rct.top += 20, rct.bottom += 20;
 		g_font->DrawTextA(NULL, dstring() << "bricks: " << player->bricks[1] << ", " << player->bricks[2] << ", " << player->bricks[3] << ", " << player->bricks[4], -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 		rct.top += 20, rct.bottom += 20;
-		g_font->DrawTextA(NULL, dstring() << "abund: " << world->getBricks(1) << ", " << world->getBricks(2) << ", " << world->getBricks(3) << ", " << world->getBricks(4), -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+		g_font->DrawTextA(NULL, dstring() << "abund: " << world->getBricks(1) << ", " << world->getBricks(2) << ", " << world->getBricks(3) << ", " << world->getBricks(4) << ", " << world->getBricks(5), -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+//		rct.top += 20, rct.bottom += 20;
+//		g_font->DrawTextA(NULL, dstring() << "pass/all: " << pass << "/" << all, -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 
 		pdev->EndScene();
 	}

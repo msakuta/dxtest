@@ -27,6 +27,7 @@ public:
 		Dirt, ///< Dirt cell
 		Gravel, ///< Gravel cell
 		Rock, ///< Rock cell
+		Water, ///< Water cell
 		HalfBit = 0x8, ///< Bit indicating half height of base material.
 		HalfAir = HalfBit | Air, ///< This does not really exist, just a theoretical entity.
 		HalfGrass = HalfBit | Grass, ///< Half-height Grass.
@@ -36,19 +37,21 @@ public:
 		NumTypes
 	};
 
-	Cell(Type t = Air) : type(t), adjacents(0){}
+	Cell(Type t = Air) : type(t), adjacents(0), adjacentWater(0){}
 	Type getType()const{return type;}
 	short getValue()const{return value;}
 	void setValue(short avalue){value = avalue;}
 	int getAdjacents()const{return adjacents;}
-	bool isSolid()const{return type != Air;}
-	bool isTranslucent()const{return type == Air || type & HalfBit;}
+	int getAdjacentWaterCells()const{return adjacentWater;}
+	bool isSolid()const{return type != Air && type != Water;}
+	bool isTranslucent()const{return type == Air || type == Water || type & HalfBit;}
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
 protected:
 	enum Type type;
 	short value;
-	short adjacents;
+	char adjacents;
+	char adjacentWater;
 
 	friend class CellVolume;
 };
@@ -67,14 +70,19 @@ protected:
 	/// </summary>
 	int _scanLines[CELLSIZE][CELLSIZE][2];
 
+	/// Scanlines for transparent cells
+	int tranScanLines[CELLSIZE][CELLSIZE][2];
+
 	int _solidcount;
 	int bricks[Cell::NumTypes];
 
 	void updateAdj(int ix, int iy, int iz);
 public:
 	CellVolume(World *world = NULL, const Vec3i &ind = Vec3i(0,0,0)) : world(world), index(ind), _solidcount(0){
-		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++)
+		for(int ix = 0; ix < CELLSIZE; ix++) for(int iy = 0; iy < CELLSIZE; iy++) for(int iz = 0; iz < 2; iz++){
 			_scanLines[ix][iy][iz] = 0;
+			tranScanLines[ix][iy][iz] = 0;
+		}
 		for(int i = 0; i < Cell::NumTypes; i++)
 			bricks[i] = 0;
 	}
@@ -96,6 +104,9 @@ public:
 	typedef int ScanLinesType[CELLSIZE][CELLSIZE][2];
 	const ScanLinesType &getScanLines()const{
 		return _scanLines;
+	}
+	const ScanLinesType &getTranScanLines()const{
+		return tranScanLines;
 	}
 	int getSolidCount()const{return _solidcount;}
 	int getBricks(int i)const{return bricks[i];}

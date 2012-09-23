@@ -18,6 +18,8 @@ const double Player::movespeed = 2.; ///< Walk speed [meters per second]
 const double Player::runspeed = 5.;
 const double Player::jumpspeed = 4.; ///< Speed set vertically when jumping [meters per second]
 const double Player::rotatespeed = acos(0.) / 1.; ///< pi / 2, means it takes 4 seconds to look all the way around.
+const double Player::gravity = 9.8;
+const double Player::swimUpAccel = 5.;
 
 
 Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){
@@ -30,8 +32,11 @@ Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0
 void Player::think(double dt){
 	if(isFlying())
 		velo = velo * exp(-10.0 * dt);
-	else
-		velo += Vec3d(0,-9.8,0) * dt;
+	else{
+		velo += Vec3d(0,-gravity,0) * dt;
+		if(game.world->cell(game.world->real2ind(pos)).getType() == Cell::Water)
+			velo *= exp(-5. * dt);
+	}
 
 	// Initialize with false always
 	floorTouched = false;
@@ -57,25 +62,44 @@ void Player::think(double dt){
 }
 
 void Player::keyinput(double dt){
+	bool inWater = game.world->cell(game.world->real2ind(pos)).getType() == Cell::Water;
+	double movespeed = this->movespeed / (1. + inWater);
 	bool shift = !!(GetKeyState(VK_SHIFT) >> 8);
 	BYTE keys[256];
 
 	GetKeyboardState(keys);
 
-	// Linear movement keys
-	if(GetKeyState('W') >> 8)
-		trymove(dt * (shift ? runspeed : movespeed) * Vec3d(0,0,1));
-	if(GetKeyState('S') >> 8)
-		trymove(dt * movespeed * Vec3d(0,0,-1));
-	if(GetKeyState('A') >> 8)
-		trymove(dt * movespeed * Vec3d(-1,0,0));
-	if(GetKeyState('D') >> 8)
-		trymove(dt * movespeed * Vec3d(1,0,0));
+	if(inWater && !isFlying()){
+		// Linear movement keys
+		if(GetKeyState('W') >> 8)
+			velo[2] += dt * swimUpAccel;
+		if(GetKeyState('S') >> 8)
+			velo[2] += -dt * swimUpAccel;
+		if(GetKeyState('A') >> 8)
+			velo[0] += -dt * swimUpAccel;
+		if(GetKeyState('D') >> 8)
+			velo[0] += dt * swimUpAccel;
 
-	// You cannot jump upward without feet on ground. What about jump downward?
-	if(floorTouched){
 		if(GetKeyState(VK_SPACE) >> 8)
-			trymove(jumpspeed * Vec3d(0,1,0), true);
+			velo[1] += dt * (swimUpAccel + gravity);
+
+	}
+	else{
+		// Linear movement keys
+		if(GetKeyState('W') >> 8)
+			trymove(dt * (shift ? runspeed : movespeed) * Vec3d(0,0,1));
+		if(GetKeyState('S') >> 8)
+			trymove(dt * movespeed * Vec3d(0,0,-1));
+		if(GetKeyState('A') >> 8)
+			trymove(dt * movespeed * Vec3d(-1,0,0));
+		if(GetKeyState('D') >> 8)
+			trymove(dt * movespeed * Vec3d(1,0,0));
+
+		// You cannot jump upward without feet on ground. What about jump downward?
+		if(floorTouched){
+			if(GetKeyState(VK_SPACE) >> 8)
+				trymove(jumpspeed * Vec3d(0,1,0), true);
+		}
 	}
 
 	if(isFlying()){
