@@ -87,6 +87,7 @@ public:
 	Quatd desiredRot;
 	double py[2]; ///< Pitch and Yaw
 	bool floorTouched;
+	bool showMiniMap; ///< Show mini map onto the screen.
 
 	/// <summary>
 	/// The current type of Cell being placed.

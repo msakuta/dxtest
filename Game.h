@@ -22,6 +22,9 @@ public:
 	bool load();
 	void serialize(std::ostream &o);
 	void unserialize(std::istream &i);
+
+protected:
+	void drawMiniMap(double dt)const;
 };
 
 }

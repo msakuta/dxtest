@@ -508,6 +508,28 @@ static void display_func(){
 	game.logwriter = NULL;
 }
 
+struct TextureData{
+	float scale;
+	int size;
+	int index;
+};
+struct MaterialData{
+	const TextureData &tex;
+	Cell::Type type;
+};
+static const TextureData textureData[] = {
+	{1, 64, 0},
+	{0.125f, 512, 1},
+	{0.5f, 128, 2},
+	{0.5f, 128, 3},
+	{1.0f, 64, 4},
+	{1.0f, 64, 5}
+};
+static const MaterialData types[] = {
+	{textureData[1], Cell::Grass}, {textureData[2], Cell::Dirt}, {textureData[3], Cell::Gravel}, {textureData[4], Cell::Rock},
+	{textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}
+};
+
 void dxtest::Game::draw(double dt)const{
 
 	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
@@ -736,27 +758,6 @@ void dxtest::Game::draw(double dt)const{
 		{
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
 			D3DXMATRIX mat, matscale, mattrans;
-			struct TextureData{
-				float scale;
-				int size;
-				int index;
-			};
-			struct MaterialData{
-				const TextureData &tex;
-				Cell::Type type;
-			};
-			static const TextureData textureData[] = {
-				{1, 64, 0},
-				{0.125f, 512, 1},
-				{0.5f, 128, 2},
-				{0.5f, 128, 3},
-				{1.0f, 64, 4},
-				{1.0f, 64, 5}
-			};
-			static const MaterialData types[] = {
-				{textureData[1], Cell::Grass}, {textureData[2], Cell::Dirt}, {textureData[3], Cell::Gravel}, {textureData[4], Cell::Rock},
-				{textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}
-			};
 			D3DRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
 			
 			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
@@ -788,7 +789,10 @@ void dxtest::Game::draw(double dt)const{
 				r.right = r.left + 64;
 				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 			}
+
 		}
+		if(player->showMiniMap)
+			drawMiniMap(dt);
 
 		RECT rct = {0, 0, 500, 20};
 		g_font->DrawTextA(NULL, dstring() << "Frametime: " << dt, -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
@@ -808,6 +812,54 @@ void dxtest::Game::draw(double dt)const{
 
 	HRESULT hr = pdev->Present(NULL, NULL, NULL, NULL);
 //	if(hr == D3DERR_DEVICELOST)
+}
+
+void Game::drawMiniMap(double dt)const{
+	D3DXMATRIX mat, matscale, mattrans;
+	static const int mapCellSize = 8;
+	static const int mapCells = 128 / mapCellSize;
+	static const int mapHeightRange = 16;
+	const int cx = windowWidth - 128;
+	static const int cy = 128;
+	D3DRECT drMap = {cx - 128, cy - 128, cx + 128, cy + 128};
+	pdev->Clear(1, &drMap, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
+	const Vec3i pos = world->real2ind(player->pos);
+	for(int ix = pos[0] - mapCells; ix < pos[0] + mapCells; ix++) for(int iz = pos[2] - mapCells; iz < pos[2] + mapCells; iz++){
+//				Vec3i dpos(SignDiv(pos[0], CELLSIZE), SignDiv(pos[1], CELLSIZE), SignDiv(pos[2], CELLSIZE));
+//				World::VolumeMap::iterator it = world->volume.find(dpos);
+//				if(it == world->volume.end())
+//					continue;
+//				CellVolume &cv = it->second;
+		Vec3i ipos(SignModulo(ix, CELLSIZE), SignModulo(pos[1], CELLSIZE), SignModulo(iz, CELLSIZE));
+//				const int (&scanLine)[2] = cv.getScanLines()[ipos[0]][ipos[1]];
+//				int iy = scanLine[0];
+		int iy = pos[1] + mapHeightRange;
+		bool space = false;
+		for(; pos[1] - mapHeightRange < iy/*scanLine[1]*/; iy--){
+			if(world->isSolid(ix, iy, iz)/*cv(ipos[0], iy, ipos[2]).isSolid()*/){
+				if(space)
+					break;
+			}
+			else
+				space = true;
+		}
+		if(iy == pos[1] + mapHeightRange/*scanLine[1]*/)
+			continue;
+		const Cell &cell = world->cell(ix, iy, iz)/*cv(ipos[0], iy, ipos[2])*/;
+		const TextureData &tex = textureData[cell.getType() & ~Cell::HalfBit];
+
+		D3DXMatrixScaling( &matscale, tex.scale * mapCellSize / 64, tex.scale * mapCellSize / 64, 1. );
+		D3DXMatrixTranslation(&mattrans, cx + (ix - pos[0]) * mapCellSize, cy + (iz - pos[2]) * mapCellSize, 0);
+		D3DXMatrixMultiply(&mat, &matscale, &mattrans);
+		g_sprite->SetTransform(&mat);
+		g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
+		RECT srcrect = {0, 0, tex.size, tex.size};
+		int col = (iy - pos[1] + mapHeightRange) * 128 / (2 * mapHeightRange) + 127;
+		g_sprite->Draw(g_pTextures[tex.index], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
+			D3DCOLOR_ARGB(255,col,col,col));
+		g_sprite->End();
+
+	}
 }
 
 bool Game::save(){

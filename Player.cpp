@@ -22,7 +22,7 @@ const double Player::gravity = 9.8;
 const double Player::swimUpAccel = 5.;
 
 
-Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1){
+Player::Player(Game &game) : game(game), pos(0, CELLSIZE, 0), velo(0,0,0), rot(0,0,0,1), desiredRot(0,0,0,1), showMiniMap(false){
 	py[0] = py[1] = 0.;
 	game.player = this;
 	curtype = Cell::Grass;
@@ -209,6 +209,9 @@ void Player::keyinput(double dt){
 	if (oldKeys['L'] & 0x80 && !(GetKeyState('L') >> 8)){
 		game.load();
 	}
+
+	if(oldKeys['M'] & 0x80 && !(GetKeyState('M') >> 8))
+		showMiniMap = !showMiniMap;
 
 	memcpy(oldKeys, keys, sizeof oldKeys);
 }

@@ -77,7 +77,7 @@ void CellVolume::initialize(const Vec3i &ci){
 	for(int ix = 0; ix < CELLSIZE; ix++) for(int iz = 0; iz < CELLSIZE; iz++){
 		// Compute the height first. The height is distance from the surface just below the cell of interest,
 		// can be negative when it's below surface.
-		int baseHeight = ci[1] * CELLSIZE - ((int)floor(field[ix][iz] * CELLSIZE * 4) - 40);
+		int baseHeight = ci[1] * CELLSIZE - ((int)floor(field[ix][iz] * CELLSIZE * 4) - 16);
 
 		for(int iy = 0; iy < CELLSIZE; iy++){
 			int height = iy + baseHeight;
