@@ -1,3 +1,6 @@
+
+#define NOMINMAX
+
 #include "perlinNoise.h"
 #include "Player.h"
 #include "World.h"
@@ -19,6 +22,7 @@ extern "C"{
 #include <stdio.h>
 #include <time.h>
 #include <sstream>
+//#include <algorithm>
 /** \file
  *  \brief The main source
  */
@@ -814,47 +818,115 @@ void dxtest::Game::draw(double dt)const{
 //	if(hr == D3DERR_DEVICELOST)
 }
 
+inline Vec3i VecSignModulo(const Vec3i &v, int divisor){
+	return Vec3i(SignModulo(v[0], divisor), SignModulo(v[1], divisor), SignModulo(v[2], divisor));
+}
+
+inline Vec3i VecSignDiv(const Vec3i &v, int divisor){
+	return Vec3i(SignDiv(v[0], divisor), SignDiv(v[1], divisor), SignDiv(v[2], divisor));
+}
+
+
+/// \brief The internal function that draws the mini map.
+///
+/// draw() got long, so I wanted to subdivide it into subroutines.
+/// The mini map is fairly independent and has some code size that deserves subroutinize.
 void Game::drawMiniMap(double dt)const{
 	D3DXMATRIX mat, matscale, mattrans;
 	static const int mapCellSize = 8;
 	static const int mapCells = 128 / mapCellSize;
+	static const int mapCellVolumes = (mapCells + CELLSIZE - 1) / CELLSIZE;
 	static const int mapHeightRange = 16;
+	static const int mapHeightCellVolumes = (mapHeightRange + CELLSIZE - 1) / CELLSIZE;
 	const int cx = windowWidth - 128;
 	static const int cy = 128;
 	D3DRECT drMap = {cx - 128, cy - 128, cx + 128, cy + 128};
+
+	// Minimize CellVolume search by accumulating height and cell reference to this buffer.
+	// TODO: Dynamic scaling
+	int heights[mapCells * 2][mapCells * 2] = {0};
+	const Cell *cells[mapCells * 2][mapCells * 2] = {NULL};
+	
+	// Fill the background with void color.
 	pdev->Clear(1, &drMap, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
+
 	const Vec3i pos = world->real2ind(player->pos);
-	for(int ix = pos[0] - mapCells; ix < pos[0] + mapCells; ix++) for(int iz = pos[2] - mapCells; iz < pos[2] + mapCells; iz++){
-//				Vec3i dpos(SignDiv(pos[0], CELLSIZE), SignDiv(pos[1], CELLSIZE), SignDiv(pos[2], CELLSIZE));
-//				World::VolumeMap::iterator it = world->volume.find(dpos);
-//				if(it == world->volume.end())
-//					continue;
-//				CellVolume &cv = it->second;
-		Vec3i ipos(SignModulo(ix, CELLSIZE), SignModulo(pos[1], CELLSIZE), SignModulo(iz, CELLSIZE));
-//				const int (&scanLine)[2] = cv.getScanLines()[ipos[0]][ipos[1]];
-//				int iy = scanLine[0];
-		int iy = pos[1] + mapHeightRange;
-		bool space = false;
-		for(; pos[1] - mapHeightRange < iy/*scanLine[1]*/; iy--){
-			if(world->isSolid(ix, iy, iz)/*cv(ipos[0], iy, ipos[2]).isSolid()*/){
-				if(space)
-					break;
+	const Vec3i cvpos = VecSignDiv(pos, CELLSIZE);
+	for(int cvx = cvpos[0] - mapCellVolumes; cvx <= cvpos[0] + mapCellVolumes; cvx++) for(int cvz = cvpos[2] - mapCellVolumes; cvz <= cvpos[2] + mapCellVolumes; cvz++){
+		for(int cvy = cvpos[1] + mapHeightCellVolumes; cvpos[1] - mapHeightCellVolumes <= cvy; cvy--){
+
+			// Find CellVolume of interest.
+			Vec3i dpos = Vec3i(cvx, cvy, cvz);
+			World::VolumeMap::iterator it = world->volume.find(dpos);
+			if(it == world->volume.end())
+				continue;
+			CellVolume &cv = it->second;
+
+			// Find up CellVolume prior to process to prevent lookup per every scanline.
+			World::VolumeMap::iterator upit = world->volume.find(Vec3i(cvx, cvy + 1, cvz));
+
+			// Obtain local position
+			const Vec3i lpos = pos - dpos * CELLSIZE;
+
+			const int maxiy = std::min(lpos[1] + mapHeightRange, CELLSIZE - 1);
+
+			for(int ix = std::max(0, lpos[0] - mapCells); ix < std::min(CELLSIZE, lpos[0] + mapCells); ix++){
+				for(int iz = std::max(0, lpos[2] - mapCells); iz < std::min(CELLSIZE, lpos[2] + mapCells); iz++){
+					// Utilizing scanlines for finding cell height for mini map will greatly reduce lookup time.
+					const int (&scanLine)[2] = cv.getScanLines()[ix][iz];
+					const int (&tranScanLine)[2] = cv.getTranScanLines()[ix][iz];
+
+					// Start from one cell up of the scanline's top, Y axis descending order.
+					// Scan line's end position is exclusive, so NOT subtracting 1 from scanLine[1] makes it
+					// begin from excess cell.
+					int iy = std::min(lpos[1] + mapHeightRange, std::max(scanLine[1], tranScanLine[1]));
+					bool space = false;
+
+					// If the excess cell exceeds border of this CellVolume, query the up CellVolume whether it's
+					// a air cell.
+					if(iy == CELLSIZE){
+						if(upit == world->volume.end() || upit->second(ix, 0, iz).getType() == Cell::Air)
+							space = true;
+						iy--;
+					}
+
+					// Descending scan to find the first boundary of air cell and other types of cells.
+					for(; std::max(lpos[1] - mapHeightRange, std::min(scanLine[0], tranScanLine[0])) <= iy; iy--){
+						if(cv(ix, iy, iz).getType() != Cell::Air){
+							if(space){
+								int rx = ix + cvx * CELLSIZE - pos[0] + mapCells;
+								int ry = iy + cvy * CELLSIZE - pos[1] + mapHeightRange;
+								int rz = iz + cvz * CELLSIZE - pos[2] + mapCells;
+								if(heights[rx][rz] < ry){
+									heights[rx][rz] = ry;
+									cells[rx][rz] = &cv(ix, iy, iz);
+								}
+								break;
+							}
+						}
+						else
+							space = true;
+					}
+				}
 			}
-			else
-				space = true;
 		}
-		if(iy == pos[1] + mapHeightRange/*scanLine[1]*/)
+	}
+//		if(iy == pos[1] + mapHeightRange/*scanLine[1]*/)
+//			continue;
+
+	for(int ix = 0; ix < mapCells * 2; ix++) for(int iz = 0; iz < mapCells * 2; iz++){
+		if(!cells[ix][iz])
 			continue;
-		const Cell &cell = world->cell(ix, iy, iz)/*cv(ipos[0], iy, ipos[2])*/;
+		const Cell &cell = *cells[ix][iz]/*world->cell(ix, iy, iz)*//*cv(ipos[0], iy, ipos[2])*/;
 		const TextureData &tex = textureData[cell.getType() & ~Cell::HalfBit];
 
 		D3DXMatrixScaling( &matscale, tex.scale * mapCellSize / 64, tex.scale * mapCellSize / 64, 1. );
-		D3DXMatrixTranslation(&mattrans, cx + (ix - pos[0]) * mapCellSize, cy + (iz - pos[2]) * mapCellSize, 0);
+		D3DXMatrixTranslation(&mattrans, cx + (ix - mapCells) * mapCellSize, cy + (iz - mapCells) * mapCellSize, 0);
 		D3DXMatrixMultiply(&mat, &matscale, &mattrans);
 		g_sprite->SetTransform(&mat);
 		g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
 		RECT srcrect = {0, 0, tex.size, tex.size};
-		int col = (iy - pos[1] + mapHeightRange) * 128 / (2 * mapHeightRange) + 127;
+		int col = (heights[ix][iz]) * 128 / (2 * mapHeightRange) + 127;
 		g_sprite->Draw(g_pTextures[tex.index], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
 			D3DCOLOR_ARGB(255,col,col,col));
 		g_sprite->End();
