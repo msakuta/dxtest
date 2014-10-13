@@ -7,7 +7,8 @@
 #include "Game.h"
 #include <assert.h>
 #include <windows.h>
-#include <d3dx9.h>
+#include <D3D11.h>
+#include <DirectXMath.h>
 extern "C"{
 #include <clib/c.h>
 #include <clib/suf/suf.h>
@@ -27,18 +28,21 @@ extern "C"{
  *  \brief The main source
  */
 
+#pragma comment(lib, "d3d11.lib")
 
 namespace dxtest{
 
 static HWND hWndApp;
-IDirect3D9 *pd3d;
-IDirect3DDevice9 *pdev;
-LPDIRECT3DVERTEXBUFFER9 g_pVB = NULL; // Buffer to hold vertices
-LPDIRECT3DVERTEXBUFFER9 g_ground = NULL; // Ground surface vertices
-LPDIRECT3DTEXTURE9      g_pTextures[6] = {NULL}; // Our texture
+ID3D11Device *pd3d;
+ID3D11DeviceContext *pdev;
+ID3D11RenderTargetView *backbuffer;
+IDXGISwapChain *swapchain;
+ID3D11Buffer *g_pVB = NULL; // Buffer to hold vertices
+ID3D11Buffer *g_ground = NULL; // Ground surface vertices
+ID3D11Texture2D *g_pTextures[6] = {NULL}; // Our texture
 const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg", "water.png"};
-LPD3DXFONT g_font;
-LPD3DXSPRITE g_sprite;
+//ID3D11XFont g_font;
+//ID3D11Sprite g_sprite;
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -72,13 +76,23 @@ struct CUSTOMVERTEX{
 };
 
 
-const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
+//const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
 
 struct TextureVertex{
-	D3DXVECTOR3 position;
-	D3DXVECTOR3 normal;
+	Vec3f position;
+	Vec3f normal;
 	FLOAT tu, tv;
 };
+
+static const D3D11_BUFFER_DESC textureBufferDesc = {
+	sizeof(D3D11_BUFFER_DESC),
+	D3D11_USAGE_DEFAULT,
+	D3D11_BIND_VERTEX_BUFFER,
+	0,
+	0,
+	sizeof(TextureVertex)
+};
+
 
 
 
@@ -95,11 +109,13 @@ static suf_t *suf;
 
 HRESULT InitD3D(HWND hWnd)
 {
-	pd3d = Direct3DCreate9(D3D_SDK_VERSION);
+	HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE,
+		NULL, 0, NULL, 0, D3D11_SDK_VERSION,
+		&pd3d, NULL, &pdev);
 	if(!pd3d)
 		return E_FAIL;
 
-	D3DPRESENT_PARAMETERS pp;
+/*	D3DPRESENT_PARAMETERS pp;
 	ZeroMemory(&pp, sizeof pp);
 	pp.Windowed = TRUE;
 	pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
@@ -109,11 +125,95 @@ HRESULT InitD3D(HWND hWnd)
 
 	HRESULT hr = pd3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
 		D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-		&pp, &pdev);
+		&pp, &pdev);*/
 
 	if(FAILED(hr))
 		return E_FAIL;
 
+	// Obtain DirectX Graphics Infrastructor object interface
+	IDXGIDevice1* pDXGI = NULL;
+	if(FAILED(pd3d->QueryInterface(__uuidof(IDXGIDevice1), (void**)&pDXGI))){
+		MessageBox(hWnd, TEXT("QueryInterface"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Obtain the adapter from DXGI
+	IDXGIAdapter* pAdapter = NULL;
+	if(FAILED(pDXGI->GetAdapter(&pAdapter))){
+		MessageBox(hWnd, TEXT("GetAdapter"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Obtain factory
+	IDXGIFactory* pDXGIFactory = NULL;
+	pAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pDXGIFactory);
+	if(pDXGIFactory == NULL){
+		MessageBox(hWnd, TEXT("GetParent"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Allow fullscreen by ALT+Enter
+	if(FAILED(pDXGIFactory->MakeWindowAssociation(hWnd, 0))){
+		MessageBox(hWnd, TEXT("MakeWindowAssociation"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Creating the swap chain
+	DXGI_SWAP_CHAIN_DESC hDXGISwapChainDesc;
+	hDXGISwapChainDesc.BufferDesc.Width = 1980;
+	hDXGISwapChainDesc.BufferDesc.Height = 1080;
+	hDXGISwapChainDesc.BufferDesc.RefreshRate.Numerator  = 0;
+	hDXGISwapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
+	hDXGISwapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	hDXGISwapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	hDXGISwapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+	hDXGISwapChainDesc.SampleDesc.Count = 1;
+	hDXGISwapChainDesc.SampleDesc.Quality = 0;
+	hDXGISwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	hDXGISwapChainDesc.BufferCount = 1;
+	hDXGISwapChainDesc.OutputWindow = hWnd;
+	hDXGISwapChainDesc.Windowed = TRUE;
+	hDXGISwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	hDXGISwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	if(FAILED(pDXGIFactory->CreateSwapChain(pd3d, &hDXGISwapChainDesc, &swapchain))){
+		MessageBox(hWnd, TEXT("CreateSwapChain"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Obtain backbuffer from swap chain
+	ID3D11Texture2D* pBackBuffer = NULL;
+	if(FAILED(swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBuffer))){
+		MessageBox(hWnd, TEXT("SwpChain GetBuffer"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Create a render target object from the back buffer
+	if(FAILED(pd3d->CreateRenderTargetView(pBackBuffer, NULL, &backbuffer))){
+		MessageBox(hWnd, TEXT("CreateRenderTargetView"), TEXT("Err"), MB_ICONSTOP);
+		return E_FAIL;
+	}
+
+	// Set the render target to current
+	pdev->OMSetRenderTargets(1, &backbuffer, NULL);
+
+	// Viewport
+	D3D11_VIEWPORT vp;
+	vp.TopLeftX = 0;
+	vp.TopLeftY = 0;
+	vp.Width = 1920;
+	vp.Height = 1080;
+	vp.MinDepth = 0.0f;
+	vp.MaxDepth = 1.0f;
+	pdev->RSSetViewports(1, &vp);
+
+	// Release COM objects when initialization is done.
+	// TODO: references leak when an error occurs!
+	pDXGI->Release();
+	pAdapter->Release();
+	pDXGIFactory->Release();
+	pBackBuffer->Release();
+
+#if 0
 	// Turn off culling, so we see the front and back of the triangle
 	pdev->SetRenderState( D3DRS_CULLMODE, D3DCULL_CW );
 
@@ -126,11 +226,12 @@ HRESULT InitD3D(HWND hWnd)
 	D3DXCreateFont(pdev, 20, 0, FW_BOLD, 0, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE, TEXT("Courier"), &g_font );
 
 	D3DXCreateSprite(pdev, &g_sprite);
+#endif
 
 	return S_OK;
 }
 
-#if 1
+#if 0
 HRESULT InitGeometry()
 {
     // Use D3DX to create a texture from a file based image
@@ -253,7 +354,7 @@ HRESULT InitGeometry()
 		{Vec4f(1, 0, 0, 1), Vec4f(1, 0, 0, 0), 0, 0},
 	};
 
-    if( FAILED( pdev->CreateVertexBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
+    if( FAILED( pdev->CreateBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
     {
         return E_FAIL;
     }
@@ -269,6 +370,7 @@ HRESULT InitGeometry()
 }
 #endif
 
+#if 0
 static D3DXPLANE frustum[6];
 
 //-----------------------------------------------------------------------------
@@ -403,7 +505,7 @@ void RotateModel(){
 	D3DXMatrixMultiply(&matWorld, &matYaw, &matPitch);
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
-
+#endif
 
 
 void capture_mouse(){
@@ -535,8 +637,10 @@ static const MaterialData types[] = {
 };
 
 void dxtest::Game::draw(double dt)const{
+	// clear the back buffer to a deep blue
+	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
 
-	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
+//	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 
 
 /*	for(int i = 0; i < 10; i++){
@@ -547,6 +651,7 @@ void dxtest::Game::draw(double dt)const{
 		massvolume[ix][iy][iz] = Cell(Cell::Type(rand() % 3));
 	}*/
 
+#if 0
 	if(SUCCEEDED(pdev->BeginScene())){
 		SetupMatrices();
 
@@ -816,6 +921,9 @@ void dxtest::Game::draw(double dt)const{
 
 	HRESULT hr = pdev->Present(NULL, NULL, NULL, NULL);
 //	if(hr == D3DERR_DEVICELOST)
+#endif
+	// switch the back buffer and the front buffer
+	swapchain->Present(0, 0);
 }
 
 inline Vec3i VecSignModulo(const Vec3i &v, int divisor){
@@ -832,6 +940,7 @@ inline Vec3i VecSignDiv(const Vec3i &v, int divisor){
 /// draw() got long, so I wanted to subdivide it into subroutines.
 /// The mini map is fairly independent and has some code size that deserves subroutinize.
 void Game::drawMiniMap(double dt)const{
+#if 0
 	D3DXMATRIX mat, matscale, mattrans;
 	static const int mapCellSize = 8;
 	static const int mapCells = 128 / mapCellSize;
@@ -932,6 +1041,7 @@ void Game::drawMiniMap(double dt)const{
 		g_sprite->End();
 
 	}
+#endif
 }
 
 bool Game::save(){
@@ -1094,7 +1204,7 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 			wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
 			wcex.hbrBackground	= NULL;
 			wcex.lpszMenuName	= NULL;
-			wcex.lpszClassName	= (L"dxtest");
+			wcex.lpszClassName	= TEXT("dxtest");
 			wcex.hIconSm		= LoadIcon(hInst, IDI_APPLICATION);
 
 			atom = RegisterClassEx(&wcex);
@@ -1103,14 +1213,14 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 
 		AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW | WS_SYSMENU | WS_CAPTION, FALSE);
 
-		hWndApp = hWnd = CreateWindow(LPCTSTR(atom), L"dxtest", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+		hWndApp = hWnd = CreateWindow(LPCTSTR(atom), TEXT("dxtest"), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, NULL, NULL, hInst, NULL);
 
 		if( !SUCCEEDED( InitD3D(hWnd) ) )
 			return 0;
         
-		if( !SUCCEEDED( InitGeometry() ) )
-			return 0;
+//		if( !SUCCEEDED( InitGeometry() ) )
+//			return 0;
 
 		do{
 			MSG msg;
@@ -1124,6 +1234,10 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 				SendMessage(hWnd, WM_TIMER, 0, 0);
 		}while (true);
 	}
+	swapchain->SetFullscreenState(FALSE, NULL);    // switch to windowed mode
+	backbuffer->Release();
+	swapchain->Release();
+	pdev->Release();
 	pd3d->Release();
 	return 0;
 }
