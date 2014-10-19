@@ -121,6 +121,9 @@ struct ConstantBuffer
 	XMMATRIX mWorld;
 	XMMATRIX mView;
 	XMMATRIX mProjection;
+	XMFLOAT4 vLightDir[2];
+	XMFLOAT4 vLightColor[2];
+	XMFLOAT4 vOutputColor;
 };
 
 struct CUSTOMVERTEX{
@@ -131,7 +134,7 @@ struct CUSTOMVERTEX{
 struct VERTEX
 {
 	XMFLOAT3 Position;      // position
-	XMFLOAT4 Color;    // color
+	XMFLOAT3 Normal;        // normal vector
 };
 
 //const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
@@ -320,14 +323,35 @@ HRESULT InitD3D(HWND hWnd)
 	// Create vertex buffer
 	static const VERTEX vertices[] =
 	{
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT4( 0.0f, 0.0f, 1.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT4( 0.0f, 1.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT4( 0.0f, 1.0f, 1.0f, 1.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT4( 1.0f, 0.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT4( 1.0f, 0.0f, 1.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT4( 1.0f, 1.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ) },
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
+
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
+
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
+
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
+
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
+
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
 	};
 	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
 	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
@@ -351,20 +375,20 @@ HRESULT InitD3D(HWND hWnd)
 		3,1,0,
 		2,1,3,
 
-		0,5,4,
-		1,5,0,
-
-		3,4,7,
-		0,4,3,
-
-		1,6,5,
-		2,6,1,
-
-		2,7,6,
-		3,7,2,
-
 		6,4,5,
 		7,4,6,
+
+		11,9,8,
+		10,9,11,
+
+		14,12,13,
+		15,12,14,
+
+		19,17,16,
+		18,17,19,
+
+		22,20,21,
+		23,20,22
 	};
 	bd.Usage = D3D11_USAGE_DEFAULT;
 	bd.ByteWidth = sizeof indices;        // 36 vertices needed for 12 triangles in a triangle list
@@ -689,32 +713,50 @@ static const char SolidVertexShaderSrc[] =
 	"	matrix World;\n"
 	"	matrix View;\n"
 	"	matrix Projection;\n"
+	"	float4 vLightDir[2];\n"
+	"	float4 vLightColor[2];\n"
+	"	float4 vOutputColor;\n"
 	"}\n"
 	"struct Varyings\n"
 	"{\n"
 	"	float4 Position : SV_Position;\n"
-	"	float4 Color    : COLOR0;\n"
+	"	float3 Norm     : NORMAL;\n"
 	"};\n"
 	"void main(in float4 Position : POSITION,"
-	"in float4 Color : COLOR0,\n"
+	"          in float3 Norm : NORMAL,\n"
 	"          out Varyings ov)\n"
 	"{\n"
 	"	float4 worldPosition = mul(Position, World);\n"
 	"	float4 viewPosition = mul(worldPosition, View);\n"
 	"	ov.Position = mul(viewPosition, Projection);\n"
-	"	ov.Color = Color;\n"
+	"	ov.Norm = mul(float4(Norm, 1), World).xyz;\n"
 	"}\n";
 
 static const char SolidPixelShaderSrc[] =
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix World;\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"	float4 vLightDir[2];\n"
+	"	float4 vLightColor[2];\n"
+	"	float4 vOutputColor;\n"
+	"}\n"
 	"float4 Color;\n"
 	"struct Varyings\n"
 	"{\n"
-	"   float4 Position : SV_Position;\n"
-	"   float4 Color    : COLOR0;\n"
+	"	float4 Position : SV_Position;\n"
+	"	float3 Norm     : NORMAL;\n"
 	"};\n"
 	"float4 main(in Varyings ov) : SV_Target\n"
 	"{\n"
-	"   return ov.Color;\n"
+	"	float4 finalColor = 0;\n"
+	"	for(int i=0; i<2; i++)\n"
+	"	{\n"
+	"		finalColor += saturate(dot((float3)vLightDir[i], ov.Norm) * vLightColor[i]);\n"
+	"	}\n"
+	"	finalColor.a = 1;\n"
+	"	return finalColor;\n"
 	"}\n";
 
 
@@ -746,7 +788,7 @@ static bool InitPipeline()
 	D3D11_INPUT_ELEMENT_DESC ied[] =
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+		{"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	int nied = numof(ied);
@@ -808,11 +850,12 @@ static void initializeVolume(){
 //	world.initialize();
 }
 
+static double gtime = 0.;
+
 static void display_func(){
 	static int frame = 0;
 	static timemeas_t tm;
 	double dt = 0.;
-	static double gtime = 0.;
 
 	std::ofstream logwriter = std::ofstream("dxtest.log", std::ofstream::app);
 	game.logwriter = &logwriter;
@@ -838,15 +881,6 @@ static void display_func(){
 		player.keyinput(dt);
 	}
 
-	// Rotation for the first cube
-	g_World1 = XMMatrixRotationY( gtime );
-
-	// Orbiting second cube
-	XMMATRIX mSpin = XMMatrixRotationZ( -gtime );
-	XMMATRIX mOrbit = XMMatrixRotationY( -gtime * 2.0f );
-	XMMATRIX mTranslate = XMMatrixTranslation( -4.0f, 0.0f, 0.0f );
-	XMMATRIX mScale = XMMatrixScaling( 0.3f, 0.3f, 0.3f );
-	g_World2 = mScale * mSpin * mTranslate * mOrbit;
 
 //	player.think(dt);
 //	world.think(dt);
@@ -903,6 +937,34 @@ void dxtest::Game::draw(double dt)const{
 	// Clear the depth buffer to 1.0 (max depth)
 	pdev->ClearDepthStencilView( depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0 );
 
+	// Rotation for the first cube
+	g_World1 = XMMatrixRotationY( gtime );
+
+	// Orbiting second cube
+	XMMATRIX mSpin = XMMatrixRotationZ( -gtime );
+	XMMATRIX mOrbit = XMMatrixRotationY( -gtime * 2.0f );
+	XMMATRIX mTranslate = XMMatrixTranslation( -4.0f, 0.0f, 0.0f );
+	XMMATRIX mScale = XMMatrixScaling( 0.3f, 0.3f, 0.3f );
+	g_World2 = mScale * mSpin * mTranslate * mOrbit;
+
+	// Setup our lighting parameters
+	XMFLOAT4 vLightDirs[2] =
+	{
+		XMFLOAT4( -0.577f, 0.577f, -0.577f, 1.0f ),
+		XMFLOAT4( 0.0f, 0.0f, -1.0f, 1.0f ),
+	};
+	XMFLOAT4 vLightColors[2] =
+	{
+		XMFLOAT4( 0.5f, 0.5f, 0.5f, 1.0f ),
+		XMFLOAT4( 0.5f, 0.0f, 0.0f, 1.0f )
+	};
+
+	// Rotate the second light around the origin
+	XMMATRIX mRotate = XMMatrixRotationY( -2.0f * gtime );
+	XMVECTOR vLightDir = XMLoadFloat4( &vLightDirs[1] );
+	vLightDir = XMVector3Transform( vLightDir, mRotate );
+	XMStoreFloat4( &vLightDirs[1], vLightDir );
+
 	//
 	// Update variables
 	//
@@ -910,7 +972,12 @@ void dxtest::Game::draw(double dt)const{
 	cb.mWorld = XMMatrixTranspose( g_World1 );
 	cb.mView = XMMatrixTranspose( g_View );
 	cb.mProjection = XMMatrixTranspose( g_Projection );
-	pdev->UpdateSubresource( pConstantBuffer, 0, nullptr, &cb, 0, 0 );
+	cb.vLightDir[0] = vLightDirs[0];
+	cb.vLightDir[1] = vLightDirs[1];
+	cb.vLightColor[0] = vLightColors[0];
+	cb.vLightColor[1] = vLightColors[1];
+	cb.vOutputColor = XMFLOAT4(1, 0, 0, 0);
+	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
 
 	// select which vertex buffer to display
 	UINT stride = sizeof(VERTEX);
@@ -920,18 +987,23 @@ void dxtest::Game::draw(double dt)const{
 	pdev->VSSetShader( pVS, nullptr, 0 );
 	pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 	pdev->PSSetShader( pPS, nullptr, 0 );
+	pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 
 	// select which primtive type we are using
 	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// draw the vertex buffer to the back buffer
-//	pdev->Draw(3, 0);
 	pdev->DrawIndexed( 36, 0, 0 );        // 36 vertices needed for 12 triangles in a triangle list
 
 	ConstantBuffer cb2;
 	cb2.mWorld = XMMatrixTranspose(g_World2);
 	cb2.mView = XMMatrixTranspose(g_View);
 	cb2.mProjection = XMMatrixTranspose(g_Projection);
+	cb2.vLightDir[0] = vLightDirs[0];
+	cb2.vLightDir[1] = vLightDirs[1];
+	cb2.vLightColor[0] = vLightColors[0];
+	cb2.vLightColor[1] = vLightColors[1];
+	cb2.vOutputColor = XMFLOAT4(0, 0, 0, 0);
 	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb2, 0, 0);
 
 	// Render the second cube
