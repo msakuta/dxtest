@@ -148,6 +148,45 @@ struct TextureVertex{
 	FLOAT tu, tv;
 };
 
+
+class Texture{
+public:
+    ID3D11Texture2D*            Tex;
+    ID3D11ShaderResourceView*   TexSv;
+    ID3D11RenderTargetView*     TexRtv;
+    ID3D11DepthStencilView*     TexDsv;
+    mutable ID3D11SamplerState* Sampler;
+    int                         Width, Height;
+    int                         Samples;
+
+    Texture(int fmt, int w, int h);
+    virtual ~Texture();
+
+    virtual int GetWidth() const    { return Width; }
+    virtual int GetHeight() const   { return Height; }
+    virtual int GetSamples() const  { return Samples; }
+
+    virtual void SetSampleMode(int sm);
+
+    // Updates texture to point to specified resources
+    //  - used for slave rendering.
+    void UpdatePlaceholderTexture(ID3D11Texture2D* texture, ID3D11ShaderResourceView* psrv)
+    {
+        Tex     = texture;
+        TexSv   = psrv;
+        TexRtv  = NULL;
+        TexDsv  = NULL;
+
+        D3D11_TEXTURE2D_DESC desc;
+        texture->GetDesc(&desc);
+        Width = desc.Width;
+        Height= desc.Height;
+    }
+
+
+//    virtual void Set(int slot, ShaderStage stage = Shader_Fragment) const;
+};
+
 static const D3D11_BUFFER_DESC textureBufferDesc = {
 	sizeof(D3D11_BUFFER_DESC),
 	D3D11_USAGE_DEFAULT,
@@ -722,6 +761,159 @@ void RotateModel(){
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
 #endif
+
+enum TextureFormat
+{
+    Texture_RGBA            = 0x0100,
+    Texture_Depth           = 0x8000,
+    Texture_TypeMask        = 0xff00,
+    Texture_SamplesMask     = 0x00ff,
+    Texture_RenderTarget    = 0x10000,
+    Texture_GenMipmaps      = 0x20000,
+};
+
+Texture::Texture(int fmt, int w, int h)
+    : Tex(NULL), TexSv(NULL), TexRtv(NULL), TexDsv(NULL), Width(w), Height(h)
+{
+//    OVR_UNUSED(fmt);
+//    Sampler = Ren->GetSamplerState(0);
+}
+
+Texture::~Texture()
+{
+}
+
+/*void Texture::Set(int slot, ShaderStage stage) const
+{
+    Ren->SetTexture(stage, slot, this);
+}*/
+
+void Texture::SetSampleMode(int sm)
+{
+//    Sampler = Ren->GetSamplerState(sm);
+}
+
+
+
+Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount)
+{
+//    OVR_UNUSED(mipcount);
+
+    DXGI_FORMAT d3dformat;
+    int         bpp;
+    switch(format & Texture_TypeMask)
+    {
+    case Texture_RGBA:
+        bpp = 4;
+        d3dformat = DXGI_FORMAT_R8G8B8A8_UNORM;
+        break;
+    case Texture_Depth:
+        bpp = 0;
+        d3dformat = DXGI_FORMAT_D32_FLOAT;
+        break;
+    default:
+        return NULL;
+    }
+
+    int samples = (format & Texture_SamplesMask);
+    if (samples < 1)
+    {
+        samples = 1;
+    }
+
+    Texture* NewTex = new Texture(format, width, height);
+    NewTex->Samples = samples;
+
+    D3D11_TEXTURE2D_DESC dsDesc;
+    dsDesc.Width     = width;
+    dsDesc.Height    = height;
+    dsDesc.MipLevels = 1;
+    dsDesc.ArraySize = 1;
+    dsDesc.Format    = d3dformat;
+    dsDesc.SampleDesc.Count = samples;
+    dsDesc.SampleDesc.Quality = 0;
+    dsDesc.Usage     = D3D11_USAGE_DEFAULT;
+    dsDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    dsDesc.CPUAccessFlags = 0;
+    dsDesc.MiscFlags      = 0;
+
+    if (format & Texture_RenderTarget)
+    {
+        if ((format & Texture_TypeMask) == Texture_Depth)            
+        { // We don't use depth textures, and creating them in d3d10 requires different options.
+            dsDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        }
+        else
+        {
+            dsDesc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+        }
+    }
+
+    HRESULT hr = pd3d->CreateTexture2D(&dsDesc, NULL, &NewTex->Tex);
+    if (FAILED(hr))
+    {
+//        OVR_DEBUG_LOG_TEXT(("Failed to create 2D D3D texture."));
+        delete NewTex;
+        return NULL;
+    }
+    if (dsDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
+    {
+        pd3d->CreateShaderResourceView(NewTex->Tex, NULL, &NewTex->TexSv);
+    }
+
+    if (data)
+    {
+        pdev->UpdateSubresource(NewTex->Tex, 0, NULL, data, width * bpp, width * height * bpp);
+/*        if (format == (Texture_RGBA | Texture_GenMipmaps))
+        {
+            int srcw = width, srch = height;
+            int level = 0;
+            uint8_t* mipmaps = NULL;
+            do
+            {
+                level++;
+                int mipw = srcw >> 1;
+                if (mipw < 1)
+                {
+                    mipw = 1;
+                }
+                int miph = srch >> 1;
+                if (miph < 1)
+                {
+                    miph = 1;
+                }
+                if (mipmaps == NULL)
+                {
+                    mipmaps = (uint8_t*)malloc(mipw * miph * 4);
+                }
+                FilterRgba2x2(level == 1 ? (const uint8_t*)data : mipmaps, srcw, srch, mipmaps);
+                Context->UpdateSubresource(NewTex->Tex, level, NULL, mipmaps, mipw * bpp, miph * bpp);
+                srcw = mipw;
+                srch = miph;
+            }
+            while(srcw > 1 || srch > 1);
+
+            if (mipmaps != NULL)
+            {
+                free(mipmaps);
+            }
+        }*/
+    }
+
+    if (format & Texture_RenderTarget)
+    {
+        if ((format & Texture_TypeMask) == Texture_Depth)
+        {
+            pd3d->CreateDepthStencilView(NewTex->Tex, NULL, &NewTex->TexDsv);
+        }
+        else
+        {
+            pd3d->CreateRenderTargetView(NewTex->Tex, NULL, &NewTex->TexRtv);
+        }
+    }
+
+    return NewTex;
+}
 
 
 static const char TexVertexShaderSrc[] =
