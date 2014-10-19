@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <windows.h>
 #include <D3D11.h>
+#include <d3dcompiler.h>
 #include <DirectXMath.h>
 extern "C"{
 #include <clib/c.h>
@@ -29,6 +30,7 @@ extern "C"{
  */
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "D3Dcompiler.lib")
 
 namespace dxtest{
 
@@ -43,6 +45,10 @@ ID3D11Texture2D *g_pTextures[6] = {NULL}; // Our texture
 const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg", "water.png"};
 //ID3D11XFont g_font;
 //ID3D11Sprite g_sprite;
+ID3D11Buffer *pVBuffer; // Vertex buffer
+ID3D11VertexShader *pVS;
+ID3D11PixelShader *pPS;
+ID3D11InputLayout *pLayout;
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -75,6 +81,11 @@ struct CUSTOMVERTEX{
 	DWORD c;
 };
 
+struct VERTEX
+{
+	Vec3f Position;      // position
+	Vec4f Color;    // color
+};
 
 //const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
 
@@ -106,6 +117,10 @@ static Player player(game);
 
 static int CC = 10560;
 static suf_t *suf;
+
+static bool InitPipeline();
+
+
 
 HRESULT InitD3D(HWND hWnd)
 {
@@ -205,6 +220,30 @@ HRESULT InitD3D(HWND hWnd)
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pdev->RSSetViewports(1, &vp);
+
+	InitPipeline();
+
+	D3D11_BUFFER_DESC bd;
+	ZeroMemory(&bd, sizeof(bd));
+
+	static const VERTEX vertices[] = {
+		{Vec3f(0.0f, 0.5f, 0.5f), Vec4f(1.0f, 0.0f, 0.0f, 1.0f)},
+		{Vec3f(0.45f, -0.5, 0.5f), Vec4f(0.0f, 1.0f, 0.0f, 1.0f)},
+		{Vec3f(-0.45f, -0.5f, 0.5f), Vec4f(0.0f, 0.0f, 1.0f, 1.0f)}
+	};
+	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
+	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;       // use as a vertex buffer
+	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;    // allow CPU to write in buffer
+
+	if(FAILED(pd3d->CreateBuffer(&bd, NULL, &pVBuffer)))
+		return E_FAIL;       // create the buffer
+
+	D3D11_MAPPED_SUBRESOURCE ms;
+	if(FAILED(pdev->Map(pVBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms)))
+		return E_FAIL;   // map the buffer
+	memcpy(ms.pData, vertices, sizeof(vertices));                // copy the data
+	pdev->Unmap(pVBuffer, NULL);                                 // unmap the buffer
 
 	// Release COM objects when initialization is done.
 	// TODO: references leak when an error occurs!
@@ -508,6 +547,74 @@ void RotateModel(){
 #endif
 
 
+static const char SolidVertexShaderSrc[] =
+	"float4x4 Proj;\n"
+	"float4x4 View;\n"
+	"struct Varyings\n"
+	"{\n"
+	"   float4 Position : SV_Position;\n"
+	"   float4 Color    : COLOR0;\n"
+	"};\n"
+	"void main(in float4 Position : POSITION,"
+	"in float4 Color : COLOR0,\n"
+	"          out Varyings ov)\n"
+	"{\n"
+//	"   ov.Position = mul(Proj, mul(View, Position));\n"
+	"   ov.Position = Position;\n"
+	"   ov.Color = Color;\n"
+	"}\n";
+
+static const char SolidPixelShaderSrc[] =
+	"float4 Color;\n"
+	"struct Varyings\n"
+	"{\n"
+	"   float4 Position : SV_Position;\n"
+	"   float4 Color    : COLOR0;\n"
+	"};\n"
+	"float4 main(in Varyings ov) : SV_Target\n"
+	"{\n"
+	"   return ov.Color;\n"
+	"}\n";
+
+
+static bool InitPipeline()
+{
+	// load and compile the two shaders
+	ID3D10Blob *VS, *PS;
+	if(FAILED(D3DCompile(SolidVertexShaderSrc, sizeof SolidVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, &VS, 0)))
+		return false;
+	if(FAILED(D3DCompile(SolidPixelShaderSrc, sizeof SolidPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, &PS, 0)))
+		return false;
+
+	void *vsrbuf = VS->GetBufferPointer();
+	size_t vsrsize = VS->GetBufferSize();
+	void *psrbuf = PS->GetBufferPointer();
+	size_t psrsize = PS->GetBufferSize();
+
+	// encapsulate both shaders into shader objects
+	if(FAILED(pd3d->CreateVertexShader(VS->GetBufferPointer(), VS->GetBufferSize(), NULL, &pVS)))
+		return false;
+	if(FAILED(pd3d->CreatePixelShader(PS->GetBufferPointer(), PS->GetBufferSize(), NULL, &pPS)))
+		return false;
+
+	// set the shader objects
+	pdev->VSSetShader(pVS, 0, 0);
+	pdev->PSSetShader(pPS, 0, 0);
+
+	// create the input layout object
+	D3D11_INPUT_ELEMENT_DESC ied[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+	};
+
+	int nied = numof(ied);
+	if(FAILED(pd3d->CreateInputLayout(ied, nied, VS->GetBufferPointer(), VS->GetBufferSize(), &pLayout)))
+		return false;
+	pdev->IASetInputLayout(pLayout);
+	return true;
+}
+
 void capture_mouse(){
 	int c;
 	extern HWND hWndApp;
@@ -557,7 +664,7 @@ void mouse_func(int button, int x, int y){
 }
 
 static void initializeVolume(){
-	world.initialize();
+//	world.initialize();
 }
 
 static void display_func(){
@@ -588,8 +695,8 @@ static void display_func(){
 		player.keyinput(dt);
 	}
 
-	player.think(dt);
-	world.think(dt);
+//	player.think(dt);
+//	world.think(dt);
 
 	frame++;
 
@@ -640,7 +747,22 @@ void dxtest::Game::draw(double dt)const{
 	// clear the back buffer to a deep blue
 	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
 
-//	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
+
+    // select which vertex buffer to display
+    UINT stride = sizeof(VERTEX);
+    UINT offset = 0;
+    pdev->IASetVertexBuffers(0, 1, &pVBuffer, &stride, &offset);
+
+	pdev->VSSetShader( pVS, nullptr, 0 );
+	pdev->PSSetShader( pPS, nullptr, 0 );
+
+	// select which primtive type we are using
+    pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // draw the vertex buffer to the back buffer
+    pdev->Draw(3, 0);
+
+	//	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 
 
 /*	for(int i = 0; i < 10; i++){
