@@ -85,6 +85,8 @@ AutoRelease<ID3D11VertexShader> pVS;
 AutoRelease<ID3D11PixelShader> pPS;
 AutoRelease<ID3D11InputLayout> pLayout;
 AutoRelease<ID3D11Buffer> pConstantBuffer;
+AutoRelease<ID3D11ShaderResourceView> pTextureRV;
+AutoRelease<ID3D11SamplerState> pSamplerLinear;
 
 XMMATRIX g_World1, g_World2;
 XMMATRIX g_View;
@@ -135,6 +137,7 @@ struct VERTEX
 {
 	XMFLOAT3 Position;      // position
 	XMFLOAT3 Normal;        // normal vector
+	XMFLOAT2 Tex;           // texture coordinates
 };
 
 //const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
@@ -323,35 +326,35 @@ HRESULT InitD3D(HWND hWnd)
 	// Create vertex buffer
 	static const VERTEX vertices[] =
 	{
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(0, 1) },
 
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(0, 1) },
 
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 1) },
 
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 1) },
 
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(0, 1) },
 
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(0, 0) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(1, 0) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(1, 1) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(0, 1) },
 	};
 	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
 	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
@@ -408,6 +411,20 @@ HRESULT InitD3D(HWND hWnd)
 	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bd.CPUAccessFlags = 0;
 	hr = pd3d->CreateBuffer(&bd, nullptr, pConstantBuffer.getpp());
+	if( FAILED( hr ) )
+		return hr;
+
+	// Create the sample state
+	D3D11_SAMPLER_DESC sampDesc;
+	ZeroMemory( &sampDesc, sizeof(sampDesc) );
+	sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	sampDesc.MinLOD = 0;
+	sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+	hr = pd3d->CreateSamplerState(&sampDesc, pSamplerLinear.getpp());
 	if( FAILED( hr ) )
 		return hr;
 
@@ -707,7 +724,9 @@ void RotateModel(){
 #endif
 
 
-static const char SolidVertexShaderSrc[] =
+static const char TexVertexShaderSrc[] =
+	"Texture2D txDiffuse : register( t0 );\n"
+	"SamplerState samLinear : register( s0 );\n"
 	"cbuffer ConstantBuffer : register( b0 )\n"
 	"{\n"
 	"	matrix World;\n"
@@ -717,22 +736,31 @@ static const char SolidVertexShaderSrc[] =
 	"	float4 vLightColor[2];\n"
 	"	float4 vOutputColor;\n"
 	"}\n"
+	"struct VS_INPUT\n"
+	"{\n"
+	"	float4 Position : POSITION;\n"
+	"	float3 Norm : NORMAL;\n"
+	"	float2 Tex : TEXCOORD0;\n"
+	"};\n"
 	"struct Varyings\n"
 	"{\n"
 	"	float4 Position : SV_Position;\n"
 	"	float3 Norm     : NORMAL;\n"
+	"	float2 Tex      : TEXCOORD0;\n"
 	"};\n"
-	"void main(in float4 Position : POSITION,"
-	"          in float3 Norm : NORMAL,\n"
+	"void main(in VS_INPUT input,\n"
 	"          out Varyings ov)\n"
 	"{\n"
-	"	float4 worldPosition = mul(Position, World);\n"
+	"	float4 worldPosition = mul(input.Position, World);\n"
 	"	float4 viewPosition = mul(worldPosition, View);\n"
 	"	ov.Position = mul(viewPosition, Projection);\n"
-	"	ov.Norm = mul(float4(Norm, 1), World).xyz;\n"
+	"	ov.Norm = mul(float4(input.Norm, 1), World).xyz;\n"
+	"	ov.Tex = input.Tex;\n"
 	"}\n";
 
-static const char SolidPixelShaderSrc[] =
+static const char TexPixelShaderSrc[] =
+	"Texture2D txDiffuse : register( t0 );\n"
+	"SamplerState samLinear : register( s0 );\n"
 	"cbuffer ConstantBuffer : register( b0 )\n"
 	"{\n"
 	"	matrix World;\n"
@@ -747,6 +775,7 @@ static const char SolidPixelShaderSrc[] =
 	"{\n"
 	"	float4 Position : SV_Position;\n"
 	"	float3 Norm     : NORMAL;\n"
+	"	float2 Tex      : TEXCOORD0;\n"
 	"};\n"
 	"float4 main(in Varyings ov) : SV_Target\n"
 	"{\n"
@@ -755,6 +784,7 @@ static const char SolidPixelShaderSrc[] =
 	"	{\n"
 	"		finalColor += saturate(dot((float3)vLightDir[i], ov.Norm) * vLightColor[i]);\n"
 	"	}\n"
+	"	finalColor.xyz *= txDiffuse.Sample( samLinear, ov.Tex );\n"
 	"	finalColor.a = 1;\n"
 	"	return finalColor;\n"
 	"}\n";
@@ -764,9 +794,9 @@ static bool InitPipeline()
 {
 	// load and compile the two shaders
 	AutoRelease<ID3D10Blob> VS, PS;
-	if(FAILED(D3DCompile(SolidVertexShaderSrc, sizeof SolidVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, VS.getpp(), 0)))
+	if(FAILED(D3DCompile(TexVertexShaderSrc, sizeof TexVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, VS.getpp(), 0)))
 		return false;
-	if(FAILED(D3DCompile(SolidPixelShaderSrc, sizeof SolidPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, PS.getpp(), 0)))
+	if(FAILED(D3DCompile(TexPixelShaderSrc, sizeof TexPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, PS.getpp(), 0)))
 		return false;
 
 	void *vsrbuf = VS->GetBufferPointer();
@@ -789,6 +819,7 @@ static bool InitPipeline()
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
 		{"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(VERTEX, Tex), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	int nied = numof(ied);
@@ -988,6 +1019,8 @@ void dxtest::Game::draw(double dt)const{
 	pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 	pdev->PSSetShader( pPS, nullptr, 0 );
 	pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
+	pdev->PSSetSamplers( 0, 1, pSamplerLinear.getpp() );
 
 	// select which primtive type we are using
 	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
