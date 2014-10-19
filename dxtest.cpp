@@ -34,6 +34,8 @@ extern "C"{
 
 namespace dxtest{
 
+using namespace DirectX;
+
 static HWND hWndApp;
 ID3D11Device *pd3d;
 ID3D11DeviceContext *pdev;
@@ -46,9 +48,15 @@ const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.pn
 //ID3D11XFont g_font;
 //ID3D11Sprite g_sprite;
 ID3D11Buffer *pVBuffer; // Vertex buffer
+ID3D11Buffer *pIndexBuffer; // Index buffer
 ID3D11VertexShader *pVS;
 ID3D11PixelShader *pPS;
 ID3D11InputLayout *pLayout;
+ID3D11Buffer *pConstantBuffer;
+
+XMMATRIX g_World;
+XMMATRIX g_View;
+XMMATRIX g_Projection;
 
 const int windowWidth = 1024; ///< The window width for DirectX drawing. Aspect ratio is defined in conjunction with windowHeight.
 const int windowHeight = 768; ///< The window height for DirectX drawing. Aspect ratio is defined in conjunction with windowWidth.
@@ -76,6 +84,13 @@ const int Game::saveFileVersion = 1;
 
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
 
+struct ConstantBuffer
+{
+	XMMATRIX mWorld;
+	XMMATRIX mView;
+	XMMATRIX mProjection;
+};
+
 struct CUSTOMVERTEX{
 	Vec3f v;
 	DWORD c;
@@ -83,8 +98,8 @@ struct CUSTOMVERTEX{
 
 struct VERTEX
 {
-	Vec3f Position;      // position
-	Vec4f Color;    // color
+	XMFLOAT3 Position;      // position
+	XMFLOAT4 Color;    // color
 };
 
 //const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
@@ -221,15 +236,38 @@ HRESULT InitD3D(HWND hWnd)
 	vp.MaxDepth = 1.0f;
 	pdev->RSSetViewports(1, &vp);
 
-	InitPipeline();
+	if(!InitPipeline())
+		return E_FAIL;
 
 	D3D11_BUFFER_DESC bd;
+
 	ZeroMemory(&bd, sizeof(bd));
 
-	static const VERTEX vertices[] = {
-		{Vec3f(0.0f, 0.5f, 0.5f), Vec4f(1.0f, 0.0f, 0.0f, 1.0f)},
-		{Vec3f(0.45f, -0.5, 0.5f), Vec4f(0.0f, 1.0f, 0.0f, 1.0f)},
-		{Vec3f(-0.45f, -0.5f, 0.5f), Vec4f(0.0f, 0.0f, 1.0f, 1.0f)}
+	// Initialize the world matrix
+	g_World = XMMatrixIdentity();
+
+	// Initialize the view matrix
+	XMVECTOR Eye = XMVectorSet( 0.0f, 1.5f, -5.0f, 0.0f );
+	XMVECTOR At = XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
+	XMVECTOR Up = XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
+	g_View = XMMatrixLookAtLH( Eye, At, Up );
+
+	// Initialize the projection matrix
+	g_Projection = XMMatrixPerspectiveFovLH( XM_PIDIV2, windowWidth / (FLOAT)windowHeight, 0.01f, 100.0f );
+
+	ZeroMemory(&bd, sizeof(bd));
+
+	// Create vertex buffer
+	static const VERTEX vertices[] =
+	{
+		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT4( 0.0f, 0.0f, 1.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT4( 0.0f, 1.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT4( 0.0f, 1.0f, 1.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT4( 1.0f, 0.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT4( 1.0f, 0.0f, 1.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT4( 1.0f, 1.0f, 0.0f, 1.0f ) },
+		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT4( 1.0f, 1.0f, 1.0f, 1.0f ) },
+		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT4( 0.0f, 0.0f, 0.0f, 1.0f ) },
 	};
 	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
 	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
@@ -244,6 +282,50 @@ HRESULT InitD3D(HWND hWnd)
 		return E_FAIL;   // map the buffer
 	memcpy(ms.pData, vertices, sizeof(vertices));                // copy the data
 	pdev->Unmap(pVBuffer, NULL);                                 // unmap the buffer
+
+	// Create index buffer
+	D3D11_SUBRESOURCE_DATA InitData;
+	ZeroMemory( &InitData, sizeof(InitData) );
+	static const WORD indices[] =
+	{
+		3,1,0,
+		2,1,3,
+
+		0,5,4,
+		1,5,0,
+
+		3,4,7,
+		0,4,3,
+
+		1,6,5,
+		2,6,1,
+
+		2,7,6,
+		3,7,2,
+
+		6,4,5,
+		7,4,6,
+	};
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof indices;        // 36 vertices needed for 12 triangles in a triangle list
+	bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	bd.CPUAccessFlags = 0;
+	InitData.pSysMem = indices;
+	hr = pd3d->CreateBuffer( &bd, &InitData, &pIndexBuffer );
+	if( FAILED( hr ) )
+		return hr;
+
+	// Set index buffer
+	pdev->IASetIndexBuffer( pIndexBuffer, DXGI_FORMAT_R16_UINT, 0 );
+
+	// Create the constant buffer
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof(ConstantBuffer);
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bd.CPUAccessFlags = 0;
+	hr = pd3d->CreateBuffer( &bd, nullptr, &pConstantBuffer );
+	if( FAILED( hr ) )
+		return hr;
 
 	// Release COM objects when initialization is done.
 	// TODO: references leak when an error occurs!
@@ -548,20 +630,25 @@ void RotateModel(){
 
 
 static const char SolidVertexShaderSrc[] =
-	"float4x4 Proj;\n"
-	"float4x4 View;\n"
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix World;\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"}\n"
 	"struct Varyings\n"
 	"{\n"
-	"   float4 Position : SV_Position;\n"
-	"   float4 Color    : COLOR0;\n"
+	"	float4 Position : SV_Position;\n"
+	"	float4 Color    : COLOR0;\n"
 	"};\n"
 	"void main(in float4 Position : POSITION,"
 	"in float4 Color : COLOR0,\n"
 	"          out Varyings ov)\n"
 	"{\n"
-//	"   ov.Position = mul(Proj, mul(View, Position));\n"
-	"   ov.Position = Position;\n"
-	"   ov.Color = Color;\n"
+	"	float4 worldPosition = mul(Position, World);\n"
+	"	float4 viewPosition = mul(worldPosition, View);\n"
+	"	ov.Position = mul(viewPosition, Projection);\n"
+	"	ov.Color = Color;\n"
 	"}\n";
 
 static const char SolidPixelShaderSrc[] =
@@ -671,6 +758,7 @@ static void display_func(){
 	static int frame = 0;
 	static timemeas_t tm;
 	double dt = 0.;
+	static double gtime = 0.;
 
 	std::ofstream logwriter = std::ofstream("dxtest.log", std::ofstream::app);
 	game.logwriter = &logwriter;
@@ -686,6 +774,7 @@ static void display_func(){
 		TimeMeasStart(&tm);
 		if(.1 < dt)
 			dt = .1;
+		gtime += dt;
 	}
 
 	logwriter << "Frame " << frame << ", dt = " << dt << std::endl;
@@ -694,6 +783,8 @@ static void display_func(){
 	if(GetActiveWindow() == hWndApp){
 		player.keyinput(dt);
 	}
+
+	g_World = XMMatrixRotationY( gtime );
 
 //	player.think(dt);
 //	world.think(dt);
@@ -747,20 +838,30 @@ void dxtest::Game::draw(double dt)const{
 	// clear the back buffer to a deep blue
 	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
 
+	//
+	// Update variables
+	//
+	ConstantBuffer cb;
+	cb.mWorld = XMMatrixTranspose( g_World );
+	cb.mView = XMMatrixTranspose( g_View );
+	cb.mProjection = XMMatrixTranspose( g_Projection );
+	pdev->UpdateSubresource( pConstantBuffer, 0, nullptr, &cb, 0, 0 );
 
-    // select which vertex buffer to display
-    UINT stride = sizeof(VERTEX);
-    UINT offset = 0;
-    pdev->IASetVertexBuffers(0, 1, &pVBuffer, &stride, &offset);
+	// select which vertex buffer to display
+	UINT stride = sizeof(VERTEX);
+	UINT offset = 0;
+	pdev->IASetVertexBuffers(0, 1, &pVBuffer, &stride, &offset);
 
 	pdev->VSSetShader( pVS, nullptr, 0 );
+	pdev->VSSetConstantBuffers( 0, 1, &pConstantBuffer );
 	pdev->PSSetShader( pPS, nullptr, 0 );
 
 	// select which primtive type we are using
-    pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // draw the vertex buffer to the back buffer
-    pdev->Draw(3, 0);
+	// draw the vertex buffer to the back buffer
+//	pdev->Draw(3, 0);
+	pdev->DrawIndexed( 36, 0, 0 );        // 36 vertices needed for 12 triangles in a triangle list
 
 	//	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
 
@@ -1359,6 +1460,12 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	swapchain->SetFullscreenState(FALSE, NULL);    // switch to windowed mode
 	backbuffer->Release();
 	swapchain->Release();
+	pVBuffer->Release();
+	pIndexBuffer->Release();
+	pVS->Release();
+	pPS->Release();
+	pLayout->Release();
+	pConstantBuffer->Release();
 	pdev->Release();
 	pd3d->Release();
 	return 0;
