@@ -36,25 +36,55 @@ namespace dxtest{
 
 using namespace DirectX;
 
+/// \brief Somewhat smart pointer that automatically Release() when the pointer is destructed.
+///
+/// It's not much smart, hence it's not named smart or something but just AutoRelease.
+/// Although it's dumb, it helps greatly on Release() management.
+/// The problems with Release()-ing manually are not only being prone to forget,
+/// but also there's no intuitive way to properly Release() on error.
+/// C++'s stack unwinding work best for this purpose.
+template<typename T>
+class AutoRelease{
+protected:
+	T *p;
+public:
+	AutoRelease(T *a = NULL) : p(a){
+		if(p) p->AddRef();
+	}
+	~AutoRelease(){
+		if(p) p->Release();
+		p = NULL;
+	}
+	operator T*(){return p;}
+	operator const T*()const{return p;}
+	T *operator->(){return p;}
+	AutoRelease &operator=(T *a){
+		if(p) p->Release();
+		p = a;
+		return *this;
+	}
+	T **getpp(){return &p;}
+};
+
 static HWND hWndApp;
-ID3D11Device *pd3d;
-ID3D11DeviceContext *pdev;
-ID3D11RenderTargetView *backbuffer;
-ID3D11Texture2D *depthStencil = NULL;
-ID3D11DepthStencilView* depthStencilView = NULL;
-IDXGISwapChain *swapchain;
-ID3D11Buffer *g_pVB = NULL; // Buffer to hold vertices
-ID3D11Buffer *g_ground = NULL; // Ground surface vertices
-ID3D11Texture2D *g_pTextures[6] = {NULL}; // Our texture
+AutoRelease<ID3D11Device> pd3d;
+AutoRelease<ID3D11DeviceContext> pdev;
+AutoRelease<ID3D11RenderTargetView> backbuffer;
+AutoRelease<ID3D11Texture2D> depthStencil;
+AutoRelease<ID3D11DepthStencilView> depthStencilView;
+AutoRelease<IDXGISwapChain> swapchain;
+AutoRelease<ID3D11Buffer> g_pVB; // Buffer to hold vertices
+AutoRelease<ID3D11Buffer> g_ground; // Ground surface vertices
+AutoRelease<ID3D11Texture2D> g_pTextures[6]; // Our texture
 const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg", "water.png"};
 //ID3D11XFont g_font;
 //ID3D11Sprite g_sprite;
-ID3D11Buffer *pVBuffer; // Vertex buffer
-ID3D11Buffer *pIndexBuffer; // Index buffer
-ID3D11VertexShader *pVS;
-ID3D11PixelShader *pPS;
-ID3D11InputLayout *pLayout;
-ID3D11Buffer *pConstantBuffer;
+AutoRelease<ID3D11Buffer> pVBuffer; // Vertex buffer
+AutoRelease<ID3D11Buffer> pIndexBuffer; // Index buffer
+AutoRelease<ID3D11VertexShader> pVS;
+AutoRelease<ID3D11PixelShader> pPS;
+AutoRelease<ID3D11InputLayout> pLayout;
+AutoRelease<ID3D11Buffer> pConstantBuffer;
 
 XMMATRIX g_World1, g_World2;
 XMMATRIX g_View;
@@ -143,7 +173,7 @@ HRESULT InitD3D(HWND hWnd)
 {
 	HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE,
 		NULL, 0, NULL, 0, D3D11_SDK_VERSION,
-		&pd3d, NULL, &pdev);
+		pd3d.getpp(), NULL, pdev.getpp());
 	if(!pd3d)
 		return E_FAIL;
 
@@ -163,22 +193,22 @@ HRESULT InitD3D(HWND hWnd)
 		return E_FAIL;
 
 	// Obtain DirectX Graphics Infrastructor object interface
-	IDXGIDevice1* pDXGI = NULL;
-	if(FAILED(pd3d->QueryInterface(__uuidof(IDXGIDevice1), (void**)&pDXGI))){
+	AutoRelease<IDXGIDevice1> pDXGI;
+	if(FAILED(pd3d->QueryInterface(__uuidof(IDXGIDevice1), (void**)pDXGI.getpp()))){
 		MessageBox(hWnd, TEXT("QueryInterface"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
 	}
 
 	// Obtain the adapter from DXGI
-	IDXGIAdapter* pAdapter = NULL;
-	if(FAILED(pDXGI->GetAdapter(&pAdapter))){
+	AutoRelease<IDXGIAdapter> pAdapter;
+	if(FAILED(pDXGI->GetAdapter(pAdapter.getpp()))){
 		MessageBox(hWnd, TEXT("GetAdapter"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
 	}
 
 	// Obtain factory
-	IDXGIFactory* pDXGIFactory = NULL;
-	pAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pDXGIFactory);
+	AutoRelease<IDXGIFactory> pDXGIFactory = NULL;
+	pAdapter->GetParent(__uuidof(IDXGIFactory), (void**)pDXGIFactory.getpp());
 	if(pDXGIFactory == NULL){
 		MessageBox(hWnd, TEXT("GetParent"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
@@ -207,20 +237,20 @@ HRESULT InitD3D(HWND hWnd)
 	hDXGISwapChainDesc.Windowed = TRUE;
 	hDXGISwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	hDXGISwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-	if(FAILED(pDXGIFactory->CreateSwapChain(pd3d, &hDXGISwapChainDesc, &swapchain))){
+	if(FAILED(pDXGIFactory->CreateSwapChain(pd3d, &hDXGISwapChainDesc, swapchain.getpp()))){
 		MessageBox(hWnd, TEXT("CreateSwapChain"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
 	}
 
 	// Obtain backbuffer from swap chain
-	ID3D11Texture2D* pBackBuffer = NULL;
-	if(FAILED(swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBuffer))){
+	AutoRelease<ID3D11Texture2D> pBackBuffer = NULL;
+	if(FAILED(swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)pBackBuffer.getpp()))){
 		MessageBox(hWnd, TEXT("SwpChain GetBuffer"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
 	}
 
 	// Create a render target object from the back buffer
-	if(FAILED(pd3d->CreateRenderTargetView(pBackBuffer, NULL, &backbuffer))){
+	if(FAILED(pd3d->CreateRenderTargetView(pBackBuffer, NULL, backbuffer.getpp()))){
 		MessageBox(hWnd, TEXT("CreateRenderTargetView"), TEXT("Err"), MB_ICONSTOP);
 		return E_FAIL;
 	}
@@ -239,7 +269,7 @@ HRESULT InitD3D(HWND hWnd)
 	descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	descDepth.CPUAccessFlags = 0;
 	descDepth.MiscFlags = 0;
-	hr = pd3d->CreateTexture2D( &descDepth, nullptr, &depthStencil );
+	hr = pd3d->CreateTexture2D(&descDepth, nullptr, depthStencil.getpp());
 	if( FAILED( hr ) )
 		return hr;
 
@@ -249,12 +279,12 @@ HRESULT InitD3D(HWND hWnd)
 	descDSV.Format = descDepth.Format;
 	descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 	descDSV.Texture2D.MipSlice = 0;
-	hr = pd3d->CreateDepthStencilView( depthStencil, &descDSV, &depthStencilView );
+	hr = pd3d->CreateDepthStencilView(depthStencil, &descDSV, depthStencilView.getpp());
 	if( FAILED( hr ) )
 		return hr;
 
 	// Set the render target to current
-	pdev->OMSetRenderTargets(1, &backbuffer, depthStencilView);
+	pdev->OMSetRenderTargets(1, backbuffer.getpp(), depthStencilView);
 
 	// Viewport
 	D3D11_VIEWPORT vp;
@@ -304,7 +334,7 @@ HRESULT InitD3D(HWND hWnd)
 	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;       // use as a vertex buffer
 	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;    // allow CPU to write in buffer
 
-	if(FAILED(pd3d->CreateBuffer(&bd, NULL, &pVBuffer)))
+	if(FAILED(pd3d->CreateBuffer(&bd, NULL, pVBuffer.getpp())))
 		return E_FAIL;       // create the buffer
 
 	D3D11_MAPPED_SUBRESOURCE ms;
@@ -341,7 +371,7 @@ HRESULT InitD3D(HWND hWnd)
 	bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
 	bd.CPUAccessFlags = 0;
 	InitData.pSysMem = indices;
-	hr = pd3d->CreateBuffer( &bd, &InitData, &pIndexBuffer );
+	hr = pd3d->CreateBuffer(&bd, &InitData, pIndexBuffer.getpp());
 	if( FAILED( hr ) )
 		return hr;
 
@@ -353,16 +383,10 @@ HRESULT InitD3D(HWND hWnd)
 	bd.ByteWidth = sizeof(ConstantBuffer);
 	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bd.CPUAccessFlags = 0;
-	hr = pd3d->CreateBuffer( &bd, nullptr, &pConstantBuffer );
+	hr = pd3d->CreateBuffer(&bd, nullptr, pConstantBuffer.getpp());
 	if( FAILED( hr ) )
 		return hr;
 
-	// Release COM objects when initialization is done.
-	// TODO: references leak when an error occurs!
-	pDXGI->Release();
-	pAdapter->Release();
-	pDXGIFactory->Release();
-	pBackBuffer->Release();
 
 #if 0
 	// Turn off culling, so we see the front and back of the triangle
@@ -697,10 +721,10 @@ static const char SolidPixelShaderSrc[] =
 static bool InitPipeline()
 {
 	// load and compile the two shaders
-	ID3D10Blob *VS, *PS;
-	if(FAILED(D3DCompile(SolidVertexShaderSrc, sizeof SolidVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, &VS, 0)))
+	AutoRelease<ID3D10Blob> VS, PS;
+	if(FAILED(D3DCompile(SolidVertexShaderSrc, sizeof SolidVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, VS.getpp(), 0)))
 		return false;
-	if(FAILED(D3DCompile(SolidPixelShaderSrc, sizeof SolidPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, &PS, 0)))
+	if(FAILED(D3DCompile(SolidPixelShaderSrc, sizeof SolidPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, PS.getpp(), 0)))
 		return false;
 
 	void *vsrbuf = VS->GetBufferPointer();
@@ -709,9 +733,9 @@ static bool InitPipeline()
 	size_t psrsize = PS->GetBufferSize();
 
 	// encapsulate both shaders into shader objects
-	if(FAILED(pd3d->CreateVertexShader(VS->GetBufferPointer(), VS->GetBufferSize(), NULL, &pVS)))
+	if(FAILED(pd3d->CreateVertexShader(VS->GetBufferPointer(), VS->GetBufferSize(), NULL, pVS.getpp())))
 		return false;
-	if(FAILED(pd3d->CreatePixelShader(PS->GetBufferPointer(), PS->GetBufferSize(), NULL, &pPS)))
+	if(FAILED(pd3d->CreatePixelShader(PS->GetBufferPointer(), PS->GetBufferSize(), NULL, pPS.getpp())))
 		return false;
 
 	// set the shader objects
@@ -726,7 +750,7 @@ static bool InitPipeline()
 	};
 
 	int nied = numof(ied);
-	if(FAILED(pd3d->CreateInputLayout(ied, nied, VS->GetBufferPointer(), VS->GetBufferSize(), &pLayout)))
+	if(FAILED(pd3d->CreateInputLayout(ied, nied, VS->GetBufferPointer(), VS->GetBufferSize(), pLayout.getpp())))
 		return false;
 	pdev->IASetInputLayout(pLayout);
 	return true;
@@ -891,10 +915,10 @@ void dxtest::Game::draw(double dt)const{
 	// select which vertex buffer to display
 	UINT stride = sizeof(VERTEX);
 	UINT offset = 0;
-	pdev->IASetVertexBuffers(0, 1, &pVBuffer, &stride, &offset);
+	pdev->IASetVertexBuffers(0, 1, pVBuffer.getpp(), &stride, &offset);
 
 	pdev->VSSetShader( pVS, nullptr, 0 );
-	pdev->VSSetConstantBuffers( 0, 1, &pConstantBuffer );
+	pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 	pdev->PSSetShader( pPS, nullptr, 0 );
 
 	// select which primtive type we are using
@@ -1490,7 +1514,7 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 
 		if( !SUCCEEDED( InitD3D(hWnd) ) )
 			return 0;
-        
+
 //		if( !SUCCEEDED( InitGeometry() ) )
 //			return 0;
 
@@ -1507,18 +1531,6 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 		}while (true);
 	}
 	swapchain->SetFullscreenState(FALSE, NULL);    // switch to windowed mode
-	backbuffer->Release();
-	depthStencil->Release();
-	depthStencilView->Release();
-	swapchain->Release();
-	pVBuffer->Release();
-	pIndexBuffer->Release();
-	pVS->Release();
-	pPS->Release();
-	pLayout->Release();
-	pConstantBuffer->Release();
-	pdev->Release();
-	pd3d->Release();
 	return 0;
 }
 
