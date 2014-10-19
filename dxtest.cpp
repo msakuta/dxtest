@@ -149,6 +149,16 @@ struct TextureVertex{
 };
 
 
+enum TextureFormat
+{
+    Texture_RGBA            = 0x0100,
+    Texture_Depth           = 0x8000,
+    Texture_TypeMask        = 0xff00,
+    Texture_SamplesMask     = 0x00ff,
+    Texture_RenderTarget    = 0x10000,
+    Texture_GenMipmaps      = 0x20000,
+};
+
 class Texture{
 public:
     ID3D11Texture2D*            Tex;
@@ -187,6 +197,11 @@ public:
 //    virtual void Set(int slot, ShaderStage stage = Shader_Fragment) const;
 };
 
+
+Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount);
+
+Texture *sampleTexture;
+
 static const D3D11_BUFFER_DESC textureBufferDesc = {
 	sizeof(D3D11_BUFFER_DESC),
 	D3D11_USAGE_DEFAULT,
@@ -196,6 +211,35 @@ static const D3D11_BUFFER_DESC textureBufferDesc = {
 	sizeof(TextureVertex)
 };
 
+struct Color
+{
+    uint8_t R,G,B,A;
+
+    Color() {}
+
+    // Constructs color by channel. Alpha is set to 0xFF (fully visible)
+    // if not specified.
+    Color(unsigned char r,unsigned char g,unsigned char b, unsigned char a = 0xFF)
+        : R(r), G(g), B(b), A(a) { }
+
+    // 0xAARRGGBB - Common HTML color Hex layout
+    Color(unsigned c)
+        : R((unsigned char)(c>>16)), G((unsigned char)(c>>8)),
+        B((unsigned char)c), A((unsigned char)(c>>24)) { }
+
+    bool operator==(const Color& b) const
+    {
+        return R == b.R && G == b.G && B == b.B && A == b.A;
+    }
+
+    void  GetRGBA(float *r, float *g, float *b, float* a) const
+    {
+        *r = R / 255.0f;
+        *g = G / 255.0f;
+        *b = B / 255.0f;
+        *a = A / 255.0f;
+    }
+};
 
 
 
@@ -453,6 +497,18 @@ HRESULT InitD3D(HWND hWnd)
 	if( FAILED( hr ) )
 		return hr;
 
+	// Sample checker texture.
+	{
+		Color checker[256*256];
+		for (int j = 0; j < 256; j++)
+			for (int i = 0; i < 256; i++)
+				checker[j*256+i] = (((i/4 >> 4) ^ (j/4 >> 4)) & 1) ?
+				Color(180,180,180,255) : Color(80,80,80,255);
+		sampleTexture = CreateTexture(Texture_RGBA, 256, 256, checker, 0);
+		if(!sampleTexture)
+			return E_FAIL;
+	}
+
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
 	ZeroMemory( &sampDesc, sizeof(sampDesc) );
@@ -466,7 +522,6 @@ HRESULT InitD3D(HWND hWnd)
 	hr = pd3d->CreateSamplerState(&sampDesc, pSamplerLinear.getpp());
 	if( FAILED( hr ) )
 		return hr;
-
 
 #if 0
 	// Turn off culling, so we see the front and back of the triangle
@@ -761,16 +816,6 @@ void RotateModel(){
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
 #endif
-
-enum TextureFormat
-{
-    Texture_RGBA            = 0x0100,
-    Texture_Depth           = 0x8000,
-    Texture_TypeMask        = 0xff00,
-    Texture_SamplesMask     = 0x00ff,
-    Texture_RenderTarget    = 0x10000,
-    Texture_GenMipmaps      = 0x20000,
-};
 
 Texture::Texture(int fmt, int w, int h)
     : Tex(NULL), TexSv(NULL), TexRtv(NULL), TexDsv(NULL), Width(w), Height(h)
@@ -1212,6 +1257,8 @@ void dxtest::Game::draw(double dt)const{
 	pdev->PSSetShader( pPS, nullptr, 0 );
 	pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
+//	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
+	pdev->PSSetShaderResources( 0, 1, &sampleTexture->TexSv );
 	pdev->PSSetSamplers( 0, 1, pSamplerLinear.getpp() );
 
 	// select which primtive type we are using
