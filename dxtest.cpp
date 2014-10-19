@@ -40,6 +40,8 @@ static HWND hWndApp;
 ID3D11Device *pd3d;
 ID3D11DeviceContext *pdev;
 ID3D11RenderTargetView *backbuffer;
+ID3D11Texture2D *depthStencil = NULL;
+ID3D11DepthStencilView* depthStencilView = NULL;
 IDXGISwapChain *swapchain;
 ID3D11Buffer *g_pVB = NULL; // Buffer to hold vertices
 ID3D11Buffer *g_ground = NULL; // Ground surface vertices
@@ -54,7 +56,7 @@ ID3D11PixelShader *pPS;
 ID3D11InputLayout *pLayout;
 ID3D11Buffer *pConstantBuffer;
 
-XMMATRIX g_World;
+XMMATRIX g_World1, g_World2;
 XMMATRIX g_View;
 XMMATRIX g_Projection;
 
@@ -190,8 +192,8 @@ HRESULT InitD3D(HWND hWnd)
 
 	// Creating the swap chain
 	DXGI_SWAP_CHAIN_DESC hDXGISwapChainDesc;
-	hDXGISwapChainDesc.BufferDesc.Width = 1980;
-	hDXGISwapChainDesc.BufferDesc.Height = 1080;
+	hDXGISwapChainDesc.BufferDesc.Width = windowWidth;
+	hDXGISwapChainDesc.BufferDesc.Height = windowHeight;
 	hDXGISwapChainDesc.BufferDesc.RefreshRate.Numerator  = 0;
 	hDXGISwapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
 	hDXGISwapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -223,15 +225,43 @@ HRESULT InitD3D(HWND hWnd)
 		return E_FAIL;
 	}
 
+	// Create depth stencil texture
+	D3D11_TEXTURE2D_DESC descDepth;
+	ZeroMemory( &descDepth, sizeof(descDepth) );
+	descDepth.Width = windowWidth;
+	descDepth.Height = windowHeight;
+	descDepth.MipLevels = 1;
+	descDepth.ArraySize = 1;
+	descDepth.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	descDepth.SampleDesc.Count = 1;
+	descDepth.SampleDesc.Quality = 0;
+	descDepth.Usage = D3D11_USAGE_DEFAULT;
+	descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	descDepth.CPUAccessFlags = 0;
+	descDepth.MiscFlags = 0;
+	hr = pd3d->CreateTexture2D( &descDepth, nullptr, &depthStencil );
+	if( FAILED( hr ) )
+		return hr;
+
+	// Create the depth stencil view
+	D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
+	ZeroMemory( &descDSV, sizeof(descDSV) );
+	descDSV.Format = descDepth.Format;
+	descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	descDSV.Texture2D.MipSlice = 0;
+	hr = pd3d->CreateDepthStencilView( depthStencil, &descDSV, &depthStencilView );
+	if( FAILED( hr ) )
+		return hr;
+
 	// Set the render target to current
-	pdev->OMSetRenderTargets(1, &backbuffer, NULL);
+	pdev->OMSetRenderTargets(1, &backbuffer, depthStencilView);
 
 	// Viewport
 	D3D11_VIEWPORT vp;
 	vp.TopLeftX = 0;
 	vp.TopLeftY = 0;
-	vp.Width = 1920;
-	vp.Height = 1080;
+	vp.Width = windowWidth;
+	vp.Height = windowHeight;
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pdev->RSSetViewports(1, &vp);
@@ -244,10 +274,10 @@ HRESULT InitD3D(HWND hWnd)
 	ZeroMemory(&bd, sizeof(bd));
 
 	// Initialize the world matrix
-	g_World = XMMatrixIdentity();
+	g_World1 = XMMatrixIdentity();
 
 	// Initialize the view matrix
-	XMVECTOR Eye = XMVectorSet( 0.0f, 1.5f, -5.0f, 0.0f );
+	XMVECTOR Eye = XMVectorSet( 0.0f, 0.5f, -5.0f, 0.0f );
 	XMVECTOR At = XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
 	XMVECTOR Up = XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
 	g_View = XMMatrixLookAtLH( Eye, At, Up );
@@ -784,7 +814,15 @@ static void display_func(){
 		player.keyinput(dt);
 	}
 
-	g_World = XMMatrixRotationY( gtime );
+	// Rotation for the first cube
+	g_World1 = XMMatrixRotationY( gtime );
+
+	// Orbiting second cube
+	XMMATRIX mSpin = XMMatrixRotationZ( -gtime );
+	XMMATRIX mOrbit = XMMatrixRotationY( -gtime * 2.0f );
+	XMMATRIX mTranslate = XMMatrixTranslation( -4.0f, 0.0f, 0.0f );
+	XMMATRIX mScale = XMMatrixScaling( 0.3f, 0.3f, 0.3f );
+	g_World2 = mScale * mSpin * mTranslate * mOrbit;
 
 //	player.think(dt);
 //	world.think(dt);
@@ -838,11 +876,14 @@ void dxtest::Game::draw(double dt)const{
 	// clear the back buffer to a deep blue
 	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
 
+	// Clear the depth buffer to 1.0 (max depth)
+	pdev->ClearDepthStencilView( depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0 );
+
 	//
 	// Update variables
 	//
 	ConstantBuffer cb;
-	cb.mWorld = XMMatrixTranspose( g_World );
+	cb.mWorld = XMMatrixTranspose( g_World1 );
 	cb.mView = XMMatrixTranspose( g_View );
 	cb.mProjection = XMMatrixTranspose( g_Projection );
 	pdev->UpdateSubresource( pConstantBuffer, 0, nullptr, &cb, 0, 0 );
@@ -863,7 +904,15 @@ void dxtest::Game::draw(double dt)const{
 //	pdev->Draw(3, 0);
 	pdev->DrawIndexed( 36, 0, 0 );        // 36 vertices needed for 12 triangles in a triangle list
 
-	//	pdev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(127, 191, 255), 1.0f, 0);
+	ConstantBuffer cb2;
+	cb2.mWorld = XMMatrixTranspose(g_World2);
+	cb2.mView = XMMatrixTranspose(g_View);
+	cb2.mProjection = XMMatrixTranspose(g_Projection);
+	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb2, 0, 0);
+
+	// Render the second cube
+	pdev->DrawIndexed(36, 0, 0);
+
 
 
 /*	for(int i = 0; i < 10; i++){
@@ -1459,6 +1508,8 @@ int WINAPI ::WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow){
 	}
 	swapchain->SetFullscreenState(FALSE, NULL);    // switch to windowed mode
 	backbuffer->Release();
+	depthStencil->Release();
+	depthStencilView->Release();
 	swapchain->Release();
 	pVBuffer->Release();
 	pIndexBuffer->Release();
