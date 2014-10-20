@@ -5,6 +5,7 @@
 #include "Player.h"
 #include "World.h"
 #include "Game.h"
+#include <png.h>
 #include <assert.h>
 #include <windows.h>
 #include <D3D11.h>
