@@ -25,6 +25,7 @@ extern "C"{
 #include <stdio.h>
 #include <time.h>
 #include <sstream>
+#include <vector>
 //#include <algorithm>
 /** \file
  *  \brief The main source
@@ -199,7 +200,8 @@ public:
 };
 
 
-Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount);
+Texture *CreateTexture(int format, int width, int height, const void* data, int mipcount = 0);
+Texture *LoadTexture(const char* fname);
 
 Texture *sampleTexture;
 
@@ -498,17 +500,8 @@ HRESULT InitD3D(HWND hWnd)
 	if( FAILED( hr ) )
 		return hr;
 
-	// Sample checker texture.
-	{
-		Color checker[256*256];
-		for (int j = 0; j < 256; j++)
-			for (int i = 0; i < 256; i++)
-				checker[j*256+i] = (((i/4 >> 4) ^ (j/4 >> 4)) & 1) ?
-				Color(180,180,180,255) : Color(80,80,80,255);
-		sampleTexture = CreateTexture(Texture_RGBA, 256, 256, checker, 0);
-		if(!sampleTexture)
-			return E_FAIL;
-	}
+	// Sample PNG texture loaded from a file.
+	sampleTexture = LoadTexture("gravel.png");
 
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
@@ -817,6 +810,109 @@ void RotateModel(){
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
 #endif
+
+Texture *LoadTexture(const char* fname){
+	FILE *fp = fopen(fname, "rb");
+	if(fp) try{
+		unsigned char header[8];
+		fread(header, 1, sizeof header, fp);
+		bool is_png = !png_sig_cmp(header, 0, sizeof header);
+		if(is_png){
+			png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)nullptr, 
+				[](png_structp, png_const_charp){}, [](png_structp, png_const_charp){});
+			png_infop info_ptr = png_create_info_struct(png_ptr);
+			if (!info_ptr)
+			{
+				png_destroy_read_struct(&png_ptr,
+				(png_infopp)NULL, (png_infopp)NULL);
+				throw 1;
+			}
+			png_infop end_info = png_create_info_struct(png_ptr);
+			if (!end_info)
+			{
+				png_destroy_read_struct(&png_ptr, &info_ptr,
+				(png_infopp)NULL);
+				throw 2;
+			}
+			if (setjmp(png_jmpbuf(png_ptr))){
+				png_destroy_read_struct(&png_ptr, &info_ptr,
+				&end_info);
+				fclose(fp);
+				throw 3;
+			}
+			png_init_io(png_ptr, fp);
+			png_set_sig_bytes(png_ptr, sizeof header);
+
+			png_bytepp ret;
+
+			{
+				BITMAPINFO *bmi;
+				png_uint_32 width, height;
+				int bit_depth, color_type, interlace_type;
+				int i;
+				/* The native order of RGB components differs in order against Windows bitmaps,
+				 * so we must instruct libpng to convert it. */
+				png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_BGR, NULL);
+
+				png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type,
+					&interlace_type, NULL, NULL);
+
+				/* Grayscale images are not supported.
+				 * TODO: alpha channel? */
+				if(bit_depth != 8 || color_type != PNG_COLOR_TYPE_RGB && color_type != PNG_COLOR_TYPE_RGBA && color_type != PNG_COLOR_TYPE_PALETTE)
+					throw 12;
+
+				/* Calculate number of components. */
+				int comps = (color_type == PNG_COLOR_TYPE_PALETTE ? 1 : color_type == PNG_COLOR_TYPE_RGB ? 3 : 4);
+
+				// Supports paletted images
+				png_colorp pal;
+				int npal = 0;
+				if(color_type == PNG_COLOR_TYPE_PALETTE){
+					png_get_PLTE(png_ptr, info_ptr, &pal, &npal);
+				}
+
+				/* png_get_rows returns array of pointers to rows allocated by the library,
+				 * which must be copied to single bitmap buffer. */
+				ret = png_get_rows(png_ptr, info_ptr);
+
+
+				if(color_type == PNG_COLOR_TYPE_PALETTE){
+					std::vector<Color> panel;
+					panel.resize(width * height);
+					for (int j = 0; j < height; j++){
+						for (int i = 0; i < width; i++){
+							int idx = ret[j][i * comps];
+							panel[j * width + i] = Color(pal[idx].red,pal[idx].green,pal[idx].blue,255);
+						}
+					}
+					Texture *retp = CreateTexture(Texture_RGBA|Texture_GenMipmaps, width, height, &panel.front());
+//					ret->SetSampleMode(Sample_Anisotropic|Sample_Repeat);
+					return retp;
+				}
+				else if(color_type == PNG_COLOR_TYPE_RGB){
+					std::vector<Color> panel;
+					panel.resize(width * height);
+					for (int j = 0; j < height; j++){
+						for (int i = 0; i < width; i++){
+							png_colorp pixel = (png_colorp)&ret[j][i * comps];
+							panel[j * width + i] = Color(pixel->red, pixel->green, pixel->blue, 255);
+						}
+					}
+					Texture *retp = CreateTexture(Texture_RGBA|Texture_GenMipmaps, width, height, &panel.front());
+					return retp;
+				}
+				else
+					throw 13;
+			}
+		}
+		fclose(fp);
+	}
+	catch(int e){
+		fclose(fp);
+	}
+	return NULL;
+}
 
 Texture::Texture(int fmt, int w, int h)
     : Tex(NULL), TexSv(NULL), TexRtv(NULL), TexDsv(NULL), Width(w), Height(h)
