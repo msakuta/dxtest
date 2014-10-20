@@ -6,6 +6,8 @@
 #include "World.h"
 #include "Game.h"
 #include <png.h>
+#include <jpeglib.h>
+#include <jerror.h>
 #include <assert.h>
 #include <windows.h>
 #include <D3D11.h>
@@ -501,7 +503,8 @@ HRESULT InitD3D(HWND hWnd)
 		return hr;
 
 	// Sample PNG texture loaded from a file.
-	sampleTexture = LoadTexture("gravel.png");
+//	sampleTexture = LoadTexture("gravel.png");
+	sampleTexture = LoadTexture("grass.jpg");
 
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
@@ -811,7 +814,84 @@ void RotateModel(){
 }
 #endif
 
-Texture *LoadTexture(const char* fname){
+
+struct my_error_mgr {
+  struct jpeg_error_mgr pub;	/* "public" fields */
+
+  jmp_buf setjmp_buffer;	/* for return to caller */
+};
+
+typedef struct my_error_mgr * my_error_ptr;
+
+static void my_error_exit (j_common_ptr cinfo)
+{
+	/* cinfo->err really points to a my_error_mgr struct, so coerce pointer */
+	my_error_ptr myerr = (my_error_ptr) cinfo->err;
+
+	/* Disable the message if the image is not a JPEG, to avoid a message
+	 when PNG formatted file is about to be read. */
+	/* We could postpone this until after returning, if we chose. */
+	if(cinfo->err->msg_code != JERR_NO_SOI)
+		(*cinfo->err->output_message) (cinfo);
+
+	/* Return control to the setjmp point */
+	longjmp(myerr->setjmp_buffer, 1);
+}
+
+
+static Texture *LoadJPEG(const char *fname){
+	FILE *infile = fopen(fname, "rb");
+	if(!infile)
+		return NULL;
+
+	jpeg_decompress_struct cinfo;
+	my_error_mgr jerr;
+	cinfo.err = jpeg_std_error(&jerr.pub);
+	jerr.pub.error_exit = my_error_exit;
+	/* Establish the setjmp return context for my_error_exit to use. */
+	if (setjmp(jerr.setjmp_buffer)) {
+		/* If we get here, the JPEG code has signaled an error.
+		 * We need to clean up the JPEG object, close the input file, and return.
+		 */
+		jpeg_destroy_decompress(&cinfo);
+		fclose(infile);
+		return NULL;
+	}
+	jpeg_create_decompress(&cinfo);
+
+	/* Choose source manager */
+	jpeg_stdio_src(&cinfo, infile);
+
+	(void) jpeg_read_header(&cinfo, TRUE);
+	(void) jpeg_start_decompress(&cinfo);
+	JDIMENSION src_row_stride = cinfo.output_width * cinfo.output_components;
+	std::vector<Color> panel;
+	panel.resize(cinfo.output_width * cinfo.output_height);
+	JSAMPARRAY buffer = (*cinfo.mem->alloc_sarray)
+		((j_common_ptr) &cinfo, JPOOL_IMAGE, src_row_stride, 1);		/* Output row buffer */
+	while (cinfo.output_scanline < cinfo.output_height) {
+		(void) jpeg_read_scanlines(&cinfo, buffer, 1);
+
+		// We cannot just memcpy it because of byte ordering.
+		if(cinfo.output_components == 3) for(int j = 0; j < cinfo.output_width; j++){
+			JSAMPLE *src = &buffer[0][j * cinfo.output_components];
+			panel[j + cinfo.output_width * (cinfo.output_scanline - 1)] = Color(src[2], src[1], src[0], 255);
+		}
+		else if(cinfo.output_components == 1) for(int j = 0; j < cinfo.output_width; j++){
+			JSAMPLE *src = &buffer[0][j * cinfo.output_components];
+			panel[j + cinfo.output_width * (cinfo.output_scanline - 1)] = Color(src[0], src[0], src[0], 255);
+		}
+	}
+
+	(void) jpeg_finish_decompress(&cinfo);
+	jpeg_destroy_decompress(&cinfo);
+
+	fclose(infile);
+
+	return CreateTexture(Texture_RGBA|Texture_GenMipmaps, cinfo.output_width, cinfo.output_height, &panel.front());
+}
+
+static Texture *LoadPNG(const char* fname){
 	FILE *fp = fopen(fname, "rb");
 	if(fp) try{
 		unsigned char header[8];
@@ -912,6 +992,14 @@ Texture *LoadTexture(const char* fname){
 		fclose(fp);
 	}
 	return NULL;
+}
+
+Texture *LoadTexture(const char* fname){
+	const char *ext = strrchr(fname, '.');
+	if(ext && !strcmp(ext, ".jpg"))
+		return LoadJPEG(fname);
+	else
+		return LoadPNG(fname);
 }
 
 Texture::Texture(int fmt, int w, int h)
