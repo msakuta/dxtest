@@ -178,6 +178,7 @@
   <ItemGroup>
     <ClCompile Include="..\dxtest.cpp" />
     <ClCompile Include="..\Player.cpp" />
+    <ClCompile Include="..\Texture.cpp" />
     <ClCompile Include="..\World.cpp" />
   </ItemGroup>
   <ItemGroup>
