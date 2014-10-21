@@ -592,8 +592,8 @@ HRESULT InitGeometry()
 }
 #endif
 
-#if 0
-static D3DXPLANE frustum[6];
+#if 1
+//static XMPLANE frustum[6];
 
 //-----------------------------------------------------------------------------
 // Name: SetupMatrices()
@@ -602,15 +602,12 @@ static D3DXPLANE frustum[6];
 VOID SetupMatrices()
 {
 
-	D3DXMATRIXA16 matEye;
-	D3DXMatrixRotationQuaternion(&matEye, (D3DXQUATERNION*)(&player.rot.cast<float>()));
-	D3DXMATRIXA16 matRot;
-	D3DXMatrixTranslation(&matRot, -player.pos[0], -player.pos[1], -player.pos[2]);
-	D3DXMATRIXA16 matView;
-	D3DXMatrixMultiply(&matView, &matRot, &matEye);
-	pdev->SetTransform( D3DTS_VIEW, &matView );
+	XMMATRIX matEye = XMMatrixRotationQuaternion(*(FXMVECTOR*)(&player.rot.cast<float>()));
+	XMMATRIX matRot = XMMatrixTranslation(-player.pos[0], -player.pos[1], -player.pos[2]);
+	XMMATRIX matView = XMMatrixMultiply(matRot, matEye);
+	g_View = matView;
 
-
+#if 0
     // For the projection matrix, we set up a perspective transform (which
     // transforms geometry from 3D view space to 2D viewport space, with
     // a perspective divide making objects smaller in the distance). To build
@@ -673,9 +670,10 @@ VOID SetupMatrices()
 
 	pdev->SetRenderState(D3DRS_LIGHTING, TRUE);
 	pdev->SetRenderState( D3DRS_AMBIENT, 0x00202020 );
-
+#endif
 }
 
+#if 0
 /// <summary>Test if given bounding box intersects or included in a frustum.</summary>
 /// <remarks>Test assumes frustum planes face inward.</remarks>
 /// <returns>True if intersects</returns>
@@ -727,6 +725,7 @@ void RotateModel(){
 	D3DXMatrixMultiply(&matWorld, &matYaw, &matPitch);
     pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
+#endif
 #endif
 
 
@@ -902,6 +901,7 @@ static void display_func(){
 
 	if(frame == 0){
 		TimeMeasStart(&tm);
+		player.pos = Vec3d(0, 0.5, -5); // Initialized player's position to some debuggable place
 	}
 	else{
 		dt = TimeMeasLap(&tm);
@@ -1002,6 +1002,8 @@ void dxtest::Game::draw(double dt)const{
 	vLightDir = XMVector3Transform( vLightDir, mRotate );
 	XMStoreFloat4( &vLightDirs[1], vLightDir );
 
+	SetupMatrices();
+
 	//
 	// Update variables
 	//
@@ -1062,11 +1064,9 @@ void dxtest::Game::draw(double dt)const{
 
 #if 0
 	if(SUCCEEDED(pdev->BeginScene())){
-		SetupMatrices();
 
-		D3DXMATRIXA16 matWorld;
-		D3DXMatrixIdentity(&matWorld);
-	    pdev->SetTransform( D3DTS_WORLD, &matWorld );
+		XMMATRIX matWorld = XMMatrixIdentity();
+		g_World1 = matWorld;
 
 /*		pdev->SetTexture( 0, g_pTexture);
 		pdev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
