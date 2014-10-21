@@ -208,6 +208,18 @@ static Texture *LoadPNG(ID3D11Device *pd3d, ID3D11DeviceContext *pcon, const cha
 					Texture *retp = CreateTexture(pd3d, pcon, Texture_RGBA|Texture_GenMipmaps, width, height, &panel.front());
 					return retp;
 				}
+				else if(color_type == PNG_COLOR_TYPE_RGBA){
+					std::vector<Color> panel;
+					panel.resize(width * height);
+					for (int j = 0; j < height; j++){
+						for (int i = 0; i < width; i++){
+							png_bytep pixel = &ret[j][i * comps];
+							panel[j * width + i] = Color(pixel[0], pixel[1], pixel[2], pixel[3]);
+						}
+					}
+					Texture *retp = CreateTexture(pd3d, pcon, Texture_RGBA|Texture_GenMipmaps, width, height, &panel.front());
+					return retp;
+				}
 				else
 					throw 13;
 			}

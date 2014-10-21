@@ -76,7 +76,7 @@ AutoRelease<ID3D11DepthStencilView> depthStencilView;
 AutoRelease<IDXGISwapChain> swapchain;
 AutoRelease<ID3D11Buffer> g_pVB; // Buffer to hold vertices
 AutoRelease<ID3D11Buffer> g_ground; // Ground surface vertices
-AutoRelease<ID3D11Texture2D> g_pTextures[6]; // Our texture
+std::auto_ptr<Texture> g_pTextures[6]; // Our texture
 const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.png", "rock.jpg", "water.png"};
 //ID3D11XFont g_font;
 //ID3D11Sprite g_sprite;
@@ -124,8 +124,9 @@ struct ConstantBuffer
 	XMMATRIX mWorld;
 	XMMATRIX mView;
 	XMMATRIX mProjection;
-	XMFLOAT4 vLightDir[2];
-	XMFLOAT4 vLightColor[2];
+	XMFLOAT4 vLightDir[1];
+	XMFLOAT4 vLightColor[1];
+	XMFLOAT4 vAmbientLight;
 	XMFLOAT4 vOutputColor;
 };
 
@@ -175,6 +176,7 @@ static int CC = 10560;
 static suf_t *suf;
 
 static bool InitPipeline();
+static HRESULT InitGeometry();
 
 
 
@@ -308,9 +310,6 @@ HRESULT InitD3D(HWND hWnd)
 	if(!InitPipeline())
 		return E_FAIL;
 
-	D3D11_BUFFER_DESC bd;
-
-	ZeroMemory(&bd, sizeof(bd));
 
 	// Initialize the world matrix
 	g_World1 = XMMatrixIdentity();
@@ -324,89 +323,12 @@ HRESULT InitD3D(HWND hWnd)
 	// Initialize the projection matrix
 	g_Projection = XMMatrixPerspectiveFovLH( XM_PIDIV2, windowWidth / (FLOAT)windowHeight, 0.01f, 100.0f );
 
-	ZeroMemory(&bd, sizeof(bd));
-
-	// Create vertex buffer
-	static const VERTEX vertices[] =
-	{
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 1.0f, 0.0f ), XMFLOAT2(0, 1) },
-
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, -1.0f, 0.0f ), XMFLOAT2(0, 1) },
-
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( -1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 1) },
-
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 1.0f, 0.0f, 0.0f ), XMFLOAT2(0, 1) },
-
-		{ XMFLOAT3( -1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( 1.0f, -1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( 1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( -1.0f, 1.0f, -1.0f ), XMFLOAT3( 0.0f, 0.0f, -1.0f ), XMFLOAT2(0, 1) },
-
-		{ XMFLOAT3( -1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(0, 0) },
-		{ XMFLOAT3( 1.0f, -1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(1, 0) },
-		{ XMFLOAT3( 1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(1, 1) },
-		{ XMFLOAT3( -1.0f, 1.0f, 1.0f ), XMFLOAT3( 0.0f, 0.0f, 1.0f ), XMFLOAT2(0, 1) },
-	};
-	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
-	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
-	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;       // use as a vertex buffer
-	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;    // allow CPU to write in buffer
-
-	if(FAILED(pd3d->CreateBuffer(&bd, NULL, pVBuffer.getpp())))
-		return E_FAIL;       // create the buffer
-
-	D3D11_MAPPED_SUBRESOURCE ms;
-	if(FAILED(pdev->Map(pVBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms)))
-		return E_FAIL;   // map the buffer
-	memcpy(ms.pData, vertices, sizeof(vertices));                // copy the data
-	pdev->Unmap(pVBuffer, NULL);                                 // unmap the buffer
-
-	// Create index buffer
-	D3D11_SUBRESOURCE_DATA InitData;
-	ZeroMemory( &InitData, sizeof(InitData) );
-	static const WORD indices[] =
-	{
-		3,1,0,
-		2,1,3,
-
-		6,4,5,
-		7,4,6,
-
-		11,9,8,
-		10,9,11,
-
-		14,12,13,
-		15,12,14,
-
-		19,17,16,
-		18,17,19,
-
-		22,20,21,
-		23,20,22
-	};
-	bd.Usage = D3D11_USAGE_DEFAULT;
-	bd.ByteWidth = sizeof indices;        // 36 vertices needed for 12 triangles in a triangle list
-	bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	bd.CPUAccessFlags = 0;
-	InitData.pSysMem = indices;
-	hr = pd3d->CreateBuffer(&bd, &InitData, pIndexBuffer.getpp());
-	if( FAILED( hr ) )
+	hr = InitGeometry();
+	if(FAILED(hr))
 		return hr;
 
-	// Set index buffer
-	pdev->IASetIndexBuffer( pIndexBuffer, DXGI_FORMAT_R16_UINT, 0 );
+	D3D11_BUFFER_DESC bd;
+	ZeroMemory(&bd, sizeof(bd));
 
 	// Create the constant buffer
 	bd.Usage = D3D11_USAGE_DEFAULT;
@@ -418,8 +340,18 @@ HRESULT InitD3D(HWND hWnd)
 		return hr;
 
 	// Sample PNG texture loaded from a file.
-//	sampleTexture = LoadTexture("gravel.png");
-	sampleTexture = LoadTexture(pd3d, pdev, "grass.jpg");
+	sampleTexture = LoadTexture(pd3d, pdev, "gravel.png");
+	for(int i = 0; i < numof(g_pTextures); i++){
+		Texture *tex = LoadTexture(pd3d, pdev, textureNames[i]);
+		if(tex == NULL)
+		{
+			std::stringstream ss;
+			ss << "Could not find " << textureNames[i];
+			MessageBoxA( NULL, ss.str().c_str(), "Texture Load Error", MB_OK );
+			return E_FAIL;
+		}
+		g_pTextures[i] = std::auto_ptr<Texture>(tex);
+	}
 
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
@@ -453,147 +385,100 @@ HRESULT InitD3D(HWND hWnd)
 	return S_OK;
 }
 
-#if 0
-HRESULT InitGeometry()
+static HRESULT InitGeometry()
 {
-    // Use D3DX to create a texture from a file based image
-//    if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture ) ) )
-	for(int i = 0; i < numof(g_pTextures); i++){
-		if( FAILED( D3DXCreateTextureFromFileA( pdev, textureNames[i], &g_pTextures[i] ) ) )
-		{
-			std::stringstream ss;
-			ss << "Could not find " << textureNames[i];
-			MessageBoxA( NULL, ss.str().c_str(), "Texture Load Error", MB_OK );
-			return E_FAIL;
-		}
-	}
+	D3D11_BUFFER_DESC bd;
 
-/*	if( FAILED( D3DXCreateTextureFromFile( pdev, L"banana.bmp", &g_pTexture2 ) ) )
+	ZeroMemory(&bd, sizeof(bd));
+
+	// Create vertex buffer
+	static const VERTEX vertices[] =
 	{
-		MessageBox( NULL, L"Could not find banana.bmp", L"Textures.exe", MB_OK );
-		return E_FAIL;
-    }*/
+		{XMFLOAT3(0, 0, 0), XMFLOAT3(0, -1, 0), XMFLOAT2(0, 0)},
+		{XMFLOAT3(0, 0, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(0, 1)},
+		{XMFLOAT3(1, 0, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(1, 1)},
+		{XMFLOAT3(1, 0, 0), XMFLOAT3(0, -1, 0), XMFLOAT2(1, 0)},
 
-#if 0
-	const char *fname = "../gltestplus/models/interceptor0.bin";
-	{
-		suf_t *ret;
-		FILE *fp;
-		long size;
-		fp = fopen(fname, "rb");
-		if(!fp)
-			return NULL;
-		fseek(fp, 0, SEEK_END);
-		size = ftell(fp);
-		fseek(fp, 0, SEEK_SET);
-		ret = (suf_t*)malloc(size);
-		fread(ret, size, 1, fp);
-		fclose(fp);
-		suf = RelocateSUF(ret);
-	}
-#endif
+		{XMFLOAT3(0, 1, 0), XMFLOAT3(0, 1, 0), XMFLOAT2(0, 0)},
+		{XMFLOAT3(1, 1, 0), XMFLOAT3(0, 1, 0), XMFLOAT2(1, 0)},
+		{XMFLOAT3(1, 1, 1), XMFLOAT3(0, 1, 0), XMFLOAT2(1, 1)},
+		{XMFLOAT3(0, 1, 1), XMFLOAT3(0, 1, 0), XMFLOAT2(0, 1)},
 
-	CUSTOMVERTEX *g_Vertices = NULL;
-	CC = 0;
+		{XMFLOAT3(0, 0, 0), XMFLOAT3(0, 0, -1), XMFLOAT2(0, 0)},
+		{XMFLOAT3(1, 0, 0), XMFLOAT3(0, 0, -1), XMFLOAT2(1, 0)},
+		{XMFLOAT3(1, 1, 0), XMFLOAT3(0, 0, -1), XMFLOAT2(1, 1)},
+		{XMFLOAT3(0, 1, 0), XMFLOAT3(0, 0, -1), XMFLOAT2(0, 1)},
 
-//	double scale = 1., offset = 200.;
-#if 0
-	double scale = 2e-2, offset = 0.;
-	for(int i = 0; i < suf->np; i++) for(int j = 2; j < suf->p[i]->p.n; j++){
-		for(int k = 0; k < 3; k++){
-			int kk = k == 0 ? 0 : j - 2 + k;
-			g_Vertices = (CUSTOMVERTEX*)::realloc(g_Vertices, (CC + 1) * sizeof *g_Vertices);
-			g_Vertices[CC].v[0] = scale * suf->v[suf->p[i]->uv.v[kk].p][0] + offset;
-			g_Vertices[CC].v[1] = scale * suf->v[suf->p[i]->uv.v[kk].p][1] + offset;
-			g_Vertices[CC].v[2] = scale * suf->v[suf->p[i]->uv.v[kk].p][2] + offset;
-//			g_Vertices[CC].v[3] = 1.f;
-			g_Vertices[CC].c = 0xff0000 + i * 255 / suf->np;
-			CC++;
-		}
-//		g_Vertices[i].v = Vec4f(cos(float(i)) * 200 + 200, sin(float(i)) * 200 + 200, 0.5f, 1.f);
-//		g_Vertices[i].c = 0xff0000 + i * 255 / CC;
-	}
+		{XMFLOAT3(0, 0, 1), XMFLOAT3(0, 0, 1), XMFLOAT2(0, 0)},
+		{XMFLOAT3(0, 1, 1), XMFLOAT3(0, 0, 1), XMFLOAT2(0, 1)},
+		{XMFLOAT3(1, 1, 1), XMFLOAT3(0, 0, 1), XMFLOAT2(1, 1)},
+		{XMFLOAT3(1, 0, 1), XMFLOAT3(0, 0, 1), XMFLOAT2(1, 0)},
 
-    if( FAILED( pdev->CreateVertexBuffer(CC * sizeof(*g_Vertices), 0, D3DFVF_CUSTOMVERTEX, D3DPOOL_DEFAULT, &g_pVB, NULL ) ) )
-    {
-        return E_FAIL;
-    }
+		{XMFLOAT3(0, 0, 0), XMFLOAT3(-1, 0, 0), XMFLOAT2(0, 0)},
+		{XMFLOAT3(0, 1, 0), XMFLOAT3(-1, 0, 0), XMFLOAT2(1, 0)},
+		{XMFLOAT3(0, 1, 1), XMFLOAT3(-1, 0, 0), XMFLOAT2(1, 1)},
+		{XMFLOAT3(0, 0, 1), XMFLOAT3(-1, 0, 0), XMFLOAT2(0, 1)},
 
-    VOID* pVertices;
-
-    if( FAILED( g_pVB->Lock( 0, CC * sizeof(*g_Vertices), (void**)&pVertices, 0 ) ) )
-        return E_FAIL;
-
-    memcpy( pVertices, g_Vertices, CC * sizeof(*g_Vertices) );
-    g_pVB->Unlock();
-
-	free(g_Vertices);
-#else
-    VOID* pVertices;
-#endif
-
-	TextureVertex vertices[] = {
-		{Vec4f(0, 0, 0, 1), Vec4f(0, -1, 0, 0), 0, 0},
-		{Vec4f(0, 0, 1, 1), Vec4f(0, -1, 0, 0), 0, 1},
-		{Vec4f(1, 0, 1, 1), Vec4f(0, -1, 0, 0), 1, 1},
-		{Vec4f(1, 0, 1, 1), Vec4f(0, -1, 0, 0), 1, 1},
-		{Vec4f(1, 0, 0, 1), Vec4f(0, -1, 0, 0), 1, 0},
-		{Vec4f(0, 0, 0, 1), Vec4f(0, -1, 0, 0), 0, 0},
-
-		{Vec4f(0, 1, 0, 1), Vec4f(0, 1, 0, 0), 0, 0},
-		{Vec4f(1, 1, 0, 1), Vec4f(0, 1, 0, 0), 1, 0},
-		{Vec4f(1, 1, 1, 1), Vec4f(0, 1, 0, 0), 1, 1},
-		{Vec4f(1, 1, 1, 1), Vec4f(0, 1, 0, 0), 1, 1},
-		{Vec4f(0, 1, 1, 1), Vec4f(0, 1, 0, 0), 0, 1},
-		{Vec4f(0, 1, 0, 1), Vec4f(0, 1, 0, 0), 0, 0},
-
-		{Vec4f(0, 0, 0, 1), Vec4f(0, 0, -1, 0), 0, 0},
-		{Vec4f(1, 0, 0, 1), Vec4f(0, 0, -1, 0), 1, 0},
-		{Vec4f(1, 1, 0, 1), Vec4f(0, 0, -1, 0), 1, 1},
-		{Vec4f(1, 1, 0, 1), Vec4f(0, 0, -1, 0), 1, 1},
-		{Vec4f(0, 1, 0, 1), Vec4f(0, 0, -1, 0), 0, 1},
-		{Vec4f(0, 0, 0, 1), Vec4f(0, 0, -1, 0), 0, 0},
-
-		{Vec4f(0, 0, 1, 1), Vec4f(0, 0, 1, 0), 0, 0},
-		{Vec4f(0, 1, 1, 1), Vec4f(0, 0, 1, 0), 0, 1},
-		{Vec4f(1, 1, 1, 1), Vec4f(0, 0, 1, 0), 1, 1},
-		{Vec4f(1, 1, 1, 1), Vec4f(0, 0, 1, 0), 1, 1},
-		{Vec4f(1, 0, 1, 1), Vec4f(0, 0, 1, 0), 1, 0},
-		{Vec4f(0, 0, 1, 1), Vec4f(0, 0, 1, 0), 0, 0},
-
-		{Vec4f(0, 0, 0, 1), Vec4f(-1, 0, 0, 0), 0, 0},
-		{Vec4f(0, 1, 0, 1), Vec4f(-1, 0, 0, 0), 1, 0},
-		{Vec4f(0, 1, 1, 1), Vec4f(-1, 0, 0, 0), 1, 1},
-		{Vec4f(0, 1, 1, 1), Vec4f(-1, 0, 0, 0), 1, 1},
-		{Vec4f(0, 0, 1, 1), Vec4f(-1, 0, 0, 0), 0, 1},
-		{Vec4f(0, 0, 0, 1), Vec4f(-1, 0, 0, 0), 0, 0},
-
-		{Vec4f(1, 0, 0, 1), Vec4f(1, 0, 0, 0), 0, 0},
-		{Vec4f(1, 0, 1, 1), Vec4f(1, 0, 0, 0), 0, 1},
-		{Vec4f(1, 1, 1, 1), Vec4f(1, 0, 0, 0), 1, 1},
-		{Vec4f(1, 1, 1, 1), Vec4f(1, 0, 0, 0), 1, 1},
-		{Vec4f(1, 1, 0, 1), Vec4f(1, 0, 0, 0), 1, 0},
-		{Vec4f(1, 0, 0, 1), Vec4f(1, 0, 0, 0), 0, 0},
+		{XMFLOAT3(1, 0, 0), XMFLOAT3(1, 0, 0), XMFLOAT2(0, 0)},
+		{XMFLOAT3(1, 0, 1), XMFLOAT3(1, 0, 0), XMFLOAT2(0, 1)},
+		{XMFLOAT3(1, 1, 1), XMFLOAT3(1, 0, 0), XMFLOAT2(1, 1)},
+		{XMFLOAT3(1, 1, 0), XMFLOAT3(1, 0, 0), XMFLOAT2(1, 0)},
 	};
+	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
+	bd.ByteWidth = sizeof vertices;             // size is the VERTEX struct * 3
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;       // use as a vertex buffer
+	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;    // allow CPU to write in buffer
 
-    if( FAILED( pdev->CreateBuffer(sizeof(vertices), 0, D3DFVF_TEXTUREVERTEX, D3DPOOL_DEFAULT, &g_ground, NULL ) ) )
-    {
-        return E_FAIL;
-    }
+	if(FAILED(pd3d->CreateBuffer(&bd, NULL, pVBuffer.getpp())))
+		return E_FAIL;       // create the buffer
 
-	if( FAILED( g_ground->Lock( 0, sizeof(vertices), (void**)&pVertices, 0 ) ) )
-		return E_FAIL;
+	D3D11_MAPPED_SUBRESOURCE ms;
+	if(FAILED(pdev->Map(pVBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms)))
+		return E_FAIL;   // map the buffer
+	memcpy(ms.pData, vertices, sizeof(vertices));                // copy the data
+	pdev->Unmap(pVBuffer, NULL);                                 // unmap the buffer
 
-    memcpy( pVertices, vertices, sizeof(vertices) );
-    g_ground->Unlock();
+	// Create index buffer
+	D3D11_SUBRESOURCE_DATA InitData;
+	ZeroMemory( &InitData, sizeof(InitData) );
+	static const WORD indices[] =
+	{
+		2,1,0,
+		0,3,2,
 
+		6,5,4,
+		4,7,6,
+
+		10,9,8,
+		8,11,10,
+
+		14,13,12,
+		12,15,14,
+
+		18,17,16,
+		16,19,18,
+
+		22,21,20,
+		20,23,22
+	};
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof indices;        // 36 vertices needed for 12 triangles in a triangle list
+	bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	bd.CPUAccessFlags = 0;
+	InitData.pSysMem = indices;
+	HRESULT hr = pd3d->CreateBuffer(&bd, &InitData, pIndexBuffer.getpp());
+	if( FAILED( hr ) )
+		return hr;
+
+	// Set index buffer
+	pdev->IASetIndexBuffer( pIndexBuffer, DXGI_FORMAT_R16_UINT, 0 );
 
 	return S_OK;
 }
-#endif
+
 
 #if 1
-//static XMPLANE frustum[6];
+static XMVECTOR frustum[6];
 
 //-----------------------------------------------------------------------------
 // Name: SetupMatrices()
@@ -673,14 +558,13 @@ VOID SetupMatrices()
 #endif
 }
 
-#if 0
 /// <summary>Test if given bounding box intersects or included in a frustum.</summary>
 /// <remarks>Test assumes frustum planes face inward.</remarks>
 /// <returns>True if intersects</returns>
-bool FrustumCheck(D3DXVECTOR3 min, D3DXVECTOR3 max, const D3DXPLANE* frustum)
+bool FrustumCheck(XMVECTOR min, XMVECTOR max, const XMVECTOR* frustum)
 {
-	D3DXVECTOR3 P;
-	D3DXVECTOR3 Q;
+	XMVECTOR P;
+	XMVECTOR Q;
 
 	for(int i = 0; i < 6; ++i)
 	{
@@ -688,19 +572,19 @@ bool FrustumCheck(D3DXVECTOR3 min, D3DXVECTOR3 max, const D3DXPLANE* frustum)
 		for(int j = 0; j < 3; ++j)
 		{
 			// Make PQ point in the same direction as the plane normal on this axis.
-			if( frustum[i][j] > 0.0f )
+			if( frustum[i].m128_f32[j] > 0.0f )
 			{
-				P[j] = min[j];
-				Q[j] = max[j];
+				P.m128_f32[j] = min.m128_f32[j];
+				Q.m128_f32[j] = max.m128_f32[j];
 			}
 			else 
 			{
-				P[j] = max[j];
-				Q[j] = min[j];
+				P.m128_f32[j] = max.m128_f32[j];
+				Q.m128_f32[j] = min.m128_f32[j];
 			}
 		}
 
-		if(D3DXPlaneDotCoord(&frustum[i], &Q) < 0.0f  )
+		if(XMPlaneDotCoord(frustum[i], Q).m128_f32[0] < 0.0f  )
 			return false;
 	}
 	return true;
@@ -708,24 +592,20 @@ bool FrustumCheck(D3DXVECTOR3 min, D3DXVECTOR3 max, const D3DXPLANE* frustum)
 
 
 void RotateModel(){
-    // For our world matrix, we will just rotate the object about the y-axis.
-    D3DXMATRIXA16 matWorld;
-
     // Set up the rotation matrix to generate 1 full rotation (2*PI radians) 
     // every 1000 ms. To avoid the loss of precision inherent in very high 
     // floating point numbers, the system time is modulated by the rotation 
     // period before conversion to a radian angle.
     UINT iTime = clock() % 5000;
-    FLOAT fAngle = iTime * ( 2.0f * D3DX_PI ) / 5000.0f;
-	FLOAT fPitch = sin(clock() % 33333 * (2.f * D3DX_PI) / 33333.f);
-	D3DXMATRIXA16 matPitch;
-	D3DXMatrixRotationX(&matPitch, fPitch);
-	D3DXMATRIXA16 matYaw;
-    D3DXMatrixRotationY(&matYaw, fAngle);
-	D3DXMatrixMultiply(&matWorld, &matYaw, &matPitch);
-    pdev->SetTransform( D3DTS_WORLD, &matWorld );
+    FLOAT fAngle = iTime * ( 2.0f * XM_PI ) / 5000.0f;
+	FLOAT fPitch = sin(clock() % 33333 * (2.f * XM_PI) / 33333.f);
+	XMMATRIX matPitch = XMMatrixRotationX(fPitch);
+	XMMATRIX matYaw = XMMatrixRotationY(fAngle);
+    // For our world matrix, we will just rotate the object about the y-axis.
+	XMMATRIX matWorld = XMMatrixMultiply(matYaw, matPitch);
+	g_World1 = matWorld;
+//    pdev->SetTransform( D3DTS_WORLD, &matWorld );
 }
-#endif
 #endif
 
 
@@ -737,8 +617,9 @@ static const char TexVertexShaderSrc[] =
 	"	matrix World;\n"
 	"	matrix View;\n"
 	"	matrix Projection;\n"
-	"	float4 vLightDir[2];\n"
-	"	float4 vLightColor[2];\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
 	"	float4 vOutputColor;\n"
 	"}\n"
 	"struct VS_INPUT\n"
@@ -759,7 +640,7 @@ static const char TexVertexShaderSrc[] =
 	"	float4 worldPosition = mul(input.Position, World);\n"
 	"	float4 viewPosition = mul(worldPosition, View);\n"
 	"	ov.Position = mul(viewPosition, Projection);\n"
-	"	ov.Norm = mul(float4(input.Norm, 1), World).xyz;\n"
+	"	ov.Norm = mul(float4(input.Norm, 0), World).xyz;\n"
 	"	ov.Tex = input.Tex;\n"
 	"}\n";
 
@@ -771,8 +652,9 @@ static const char TexPixelShaderSrc[] =
 	"	matrix World;\n"
 	"	matrix View;\n"
 	"	matrix Projection;\n"
-	"	float4 vLightDir[2];\n"
-	"	float4 vLightColor[2];\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
 	"	float4 vOutputColor;\n"
 	"}\n"
 	"float4 Color;\n"
@@ -785,10 +667,11 @@ static const char TexPixelShaderSrc[] =
 	"float4 main(in Varyings ov) : SV_Target\n"
 	"{\n"
 	"	float4 finalColor = 0;\n"
-	"	for(int i=0; i<2; i++)\n"
+	"	for(int i=0; i<1; i++)\n"
 	"	{\n"
 	"		finalColor += saturate(dot((float3)vLightDir[i], ov.Norm) * vLightColor[i]);\n"
 	"	}\n"
+	"	finalColor = saturate(finalColor + vAmbientLight);\n"
 	"	finalColor.xyz *= txDiffuse.Sample( samLinear, ov.Tex );\n"
 	"	finalColor.a = 1;\n"
 	"	return finalColor;\n"
@@ -883,7 +766,7 @@ void mouse_func(int button, int x, int y){
 }
 
 static void initializeVolume(){
-//	world.initialize();
+	world.initialize();
 }
 
 static double gtime = 0.;
@@ -901,7 +784,6 @@ static void display_func(){
 
 	if(frame == 0){
 		TimeMeasStart(&tm);
-		player.pos = Vec3d(0, 0.5, -5); // Initialized player's position to some debuggable place
 	}
 	else{
 		dt = TimeMeasLap(&tm);
@@ -919,8 +801,8 @@ static void display_func(){
 	}
 
 
-//	player.think(dt);
-//	world.think(dt);
+	player.think(dt);
+	world.think(dt);
 
 	frame++;
 
@@ -967,6 +849,15 @@ static const MaterialData types[] = {
 	{textureData[1], Cell::HalfGrass}, {textureData[2], Cell::HalfDirt}, {textureData[3], Cell::HalfGravel}, {textureData[4], Cell::HalfRock}
 };
 
+class xmvc{
+	XMVECTOR v;
+public:
+	operator XMVECTOR&(){return v;}
+	operator Vec3f(){return Vec3f(v.m128_f32[0], v.m128_f32[1], v.m128_f32[2]);}
+	xmvc(const Vec3f &a) : v(XMLoadFloat4(&XMFLOAT4(a[0], a[1], a[2], 0))){}
+	xmvc(const XMVECTOR &a) : v(a){}
+};
+
 void dxtest::Game::draw(double dt)const{
 	// clear the back buffer to a deep blue
 	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
@@ -988,19 +879,13 @@ void dxtest::Game::draw(double dt)const{
 	XMFLOAT4 vLightDirs[2] =
 	{
 		XMFLOAT4( -0.577f, 0.577f, -0.577f, 1.0f ),
-		XMFLOAT4( 0.0f, 0.0f, -1.0f, 1.0f ),
+//		XMFLOAT4( 0.0f, -1.0f, -0.0f, 1.0f ),
 	};
 	XMFLOAT4 vLightColors[2] =
 	{
 		XMFLOAT4( 0.5f, 0.5f, 0.5f, 1.0f ),
-		XMFLOAT4( 0.5f, 0.0f, 0.0f, 1.0f )
+//		XMFLOAT4( 0.5f, 0.3f, 0.0f, 1.0f )
 	};
-
-	// Rotate the second light around the origin
-	XMMATRIX mRotate = XMMatrixRotationY( -2.0f * gtime );
-	XMVECTOR vLightDir = XMLoadFloat4( &vLightDirs[1] );
-	vLightDir = XMVector3Transform( vLightDir, mRotate );
-	XMStoreFloat4( &vLightDirs[1], vLightDir );
 
 	SetupMatrices();
 
@@ -1012,9 +897,10 @@ void dxtest::Game::draw(double dt)const{
 	cb.mView = XMMatrixTranspose( g_View );
 	cb.mProjection = XMMatrixTranspose( g_Projection );
 	cb.vLightDir[0] = vLightDirs[0];
-	cb.vLightDir[1] = vLightDirs[1];
+//	cb.vLightDir[1] = vLightDirs[1];
 	cb.vLightColor[0] = vLightColors[0];
-	cb.vLightColor[1] = vLightColors[1];
+//	cb.vLightColor[1] = vLightColors[1];
+	cb.vAmbientLight = XMFLOAT4(0.1, 0.15, 0.2, 1.0);
 	cb.vOutputColor = XMFLOAT4(1, 0, 0, 0);
 	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
 
@@ -1035,35 +921,9 @@ void dxtest::Game::draw(double dt)const{
 	// select which primtive type we are using
 	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// draw the vertex buffer to the back buffer
-	pdev->DrawIndexed( 36, 0, 0 );        // 36 vertices needed for 12 triangles in a triangle list
 
-	ConstantBuffer cb2;
-	cb2.mWorld = XMMatrixTranspose(g_World2);
-	cb2.mView = XMMatrixTranspose(g_View);
-	cb2.mProjection = XMMatrixTranspose(g_Projection);
-	cb2.vLightDir[0] = vLightDirs[0];
-	cb2.vLightDir[1] = vLightDirs[1];
-	cb2.vLightColor[0] = vLightColors[0];
-	cb2.vLightColor[1] = vLightColors[1];
-	cb2.vOutputColor = XMFLOAT4(0, 0, 0, 0);
-	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb2, 0, 0);
-
-	// Render the second cube
-	pdev->DrawIndexed(36, 0, 0);
-
-
-
-/*	for(int i = 0; i < 10; i++){
-		int ix, iy, iz;
-		ix = rand() % CELLSIZE;
-		iy = rand() % CELLSIZE;
-		iz = rand() % CELLSIZE;
-		massvolume[ix][iy][iz] = Cell(Cell::Type(rand() % 3));
-	}*/
-
-#if 0
-	if(SUCCEEDED(pdev->BeginScene())){
+#if 1
+/*	if(SUCCEEDED(pdev->BeginScene()))*/{
 
 		XMMATRIX matWorld = XMMatrixIdentity();
 		g_World1 = matWorld;
@@ -1074,13 +934,13 @@ void dxtest::Game::draw(double dt)const{
         pdev->SetTextureStageState( 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE );
         pdev->SetTextureStageState( 0, D3DTSS_ALPHAOP, D3DTOP_DISABLE );*/
 
-		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
-        pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
+//		pdev->SetStreamSource( 0, g_ground, 0, sizeof( TextureVertex ) );
+//        pdev->SetFVF( D3DFVF_TEXTUREVERTEX );
 
 		const Vec3i inf = World::real2ind(player->getPos());
 
 		// The first pass only draws solid cells.
-		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+//		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
 			const Vec3i &key = it->first;
 			CellVolume &cv = it->second;
@@ -1090,7 +950,7 @@ void dxtest::Game::draw(double dt)const{
 				continue;
 
 			// Examine if intersects or included in viewing frustum
-			if(!FrustumCheck((D3DXVECTOR3)World::ind2real(key * CELLSIZE).cast<float>(), (D3DXVECTOR3)World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>(), frustum))
+			if(!FrustumCheck(xmvc(World::ind2real(key * CELLSIZE).cast<float>()), xmvc(World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>()), frustum))
 				continue;
 
 			// Cull too far CellVolumes
@@ -1135,8 +995,9 @@ void dxtest::Game::draw(double dt)const{
 						bool z0 = !cv(ix, iy, iz - 1).isTranslucent();
 						bool z1 = !cv(ix, iy, iz + 1).isTranslucent();
 						const Cell &cell = cv(ix, iy, iz);
-						pdev->SetTexture(0, g_pTextures[cell.getType() & ~Cell::HalfBit]);
-						D3DXMatrixTranslation(&matWorld,
+//						pdev->SetTexture(0, g_pTextures[cell.getType() & ~Cell::HalfBit]);
+						pdev->PSSetShaderResources( 0, 1, &g_pTextures[cell.getType() & ~Cell::HalfBit]->TexSv );
+						matWorld = XMMatrixTranslation(
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
@@ -1145,28 +1006,32 @@ void dxtest::Game::draw(double dt)const{
 							continue;
 
 						if(cell.getType() & Cell::HalfBit){
-							D3DXMATRIXA16 matscale, matresult;
-							D3DXMatrixScaling(&matscale, 1, 0.5, 1.);
-							D3DXMatrixMultiply(&matresult, &matscale, &matWorld);
-							pdev->SetTransform(D3DTS_WORLD, &matresult);
+							XMMATRIX matscale = XMMatrixScaling(1, 0.5, 1.);
+							XMMATRIX matresult = XMMatrixMultiply(matscale, matWorld);
+
+							cb.mWorld = XMMatrixTranspose(matresult);
+							pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
 						}
-						else
-							pdev->SetTransform(D3DTS_WORLD, &matWorld);
+						else{
+							g_World1 = matWorld;
+							cb.mWorld = XMMatrixTranspose(g_World1);
+							pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
+						}
 						if(!x0 && !x1 && !y0 && !y1)
-							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+							pdev->DrawIndexed(36, 0, 0);
 						else{
 							if(!x0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 8 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 8 * 3, 0);
 							if(!x1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 10 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 10 * 3, 0);
 							if(!y0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 2 );
+								pdev->DrawIndexed(2 * 3, 0, 0);
 							if(!y1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 2 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 2 * 3, 0);
 							if(!z0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 4 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 4 * 3, 0);
 							if(!z1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 6 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 6 * 3, 0);
 						}
 					}
 				}
@@ -1177,11 +1042,12 @@ void dxtest::Game::draw(double dt)const{
 		int all = 0;
 
 		// The second pass draw transparent objects
-		pdev->SetTexture(0, g_pTextures[Cell::Water]);
-		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-		pdev->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);
-		pdev->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
-		pdev->SetRenderState(D3DRS_BLENDOP,D3DBLENDOP_ADD);
+		pdev->PSSetShaderResources(0, 1, &g_pTextures[Cell::Water]->TexSv);
+//		pdev->SetTexture(0, g_pTextures[Cell::Water]);
+//		pdev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+//		pdev->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);
+//		pdev->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
+//		pdev->SetRenderState(D3DRS_BLENDOP,D3DBLENDOP_ADD);
 		for(World::VolumeMap::iterator it = world->volume.begin(); it != world->volume.end(); it++){
 			const Vec3i &key = it->first;
 			CellVolume &cv = it->second;
@@ -1191,7 +1057,7 @@ void dxtest::Game::draw(double dt)const{
 				continue;
 
 			// Examine if intersects or included in viewing frustum
-			if(!FrustumCheck((D3DXVECTOR3)World::ind2real(key * CELLSIZE).cast<float>(), (D3DXVECTOR3)World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>(), frustum))
+			if(!FrustumCheck(xmvc(World::ind2real(key * CELLSIZE).cast<float>()), xmvc(World::ind2real((key + Vec3i(1,1,1)) * CELLSIZE).cast<float>()), frustum))
 				continue;
 
 			// Cull too far CellVolumes
@@ -1237,7 +1103,7 @@ void dxtest::Game::draw(double dt)const{
 						bool y1 = !cv(ix, iy + 1, iz).isTranslucent();
 						bool z0 = !cv(ix, iy, iz - 1).isTranslucent();
 						bool z1 = !cv(ix, iy, iz + 1).isTranslucent();
-						D3DXMatrixTranslation(&matWorld,
+						matWorld = XMMatrixTranslation(
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
@@ -1249,23 +1115,24 @@ void dxtest::Game::draw(double dt)const{
 						z0 |= cv(ix, iy, iz - 1).getType() != cell.Air;
 						z1 |= cv(ix, iy, iz + 1).getType() != cell.Air;
 
-						pdev->SetTransform(D3DTS_WORLD, &matWorld);
+						g_World1 = matWorld;
+//						pdev->SetTransform(D3DTS_WORLD, &matWorld);
 
 						if(!x0 && !x1 && !y0 && !y1)
-							pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 12 );
+							pdev->DrawIndexed(36, 0, 0);
 						else{
 							if(!x0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 8 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 8 * 3, 0);
 							if(!x1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 10 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 10 * 3, 0);
 							if(!y0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 0, 2 );
+								pdev->DrawIndexed(2 * 3, 0, 0);
 							if(!y1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 2 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 2 * 3, 0);
 							if(!z0)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 4 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 4 * 3, 0);
 							if(!z1)
-								pdev->DrawPrimitive( D3DPT_TRIANGLELIST, 6 * 3, 2 );
+								pdev->DrawIndexed(2 * 3, 6 * 3, 0);
 						}
 						pass += !x0 || !x1 || !y0 || !y1 || !z0 || !z1;
 					}
@@ -1273,10 +1140,11 @@ void dxtest::Game::draw(double dt)const{
 			}
 		}
 
+#if 0
 		{
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
-			D3DXMATRIX mat, matscale, mattrans;
-			D3DRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
+			XMMATRIX mat, matscale, mattrans;
+			XMRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
 			
 			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
 			for(int i = 0; i < numof(types); i++){
@@ -1326,10 +1194,9 @@ void dxtest::Game::draw(double dt)const{
 //		g_font->DrawTextA(NULL, dstring() << "pass/all: " << pass << "/" << all, -1, &rct, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
 
 		pdev->EndScene();
+#endif
 	}
 
-	HRESULT hr = pdev->Present(NULL, NULL, NULL, NULL);
-//	if(hr == D3DERR_DEVICELOST)
 #endif
 	// switch the back buffer and the front buffer
 	swapchain->Present(0, 0);
