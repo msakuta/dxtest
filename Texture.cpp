@@ -241,7 +241,7 @@ Texture *LoadTexture(ID3D11Device *pd3d, ID3D11DeviceContext *pcon, const char* 
 }
 
 Texture::Texture(int fmt, int w, int h)
-    : Tex(NULL), TexSv(NULL), TexRtv(NULL), TexDsv(NULL), Width(w), Height(h)
+    : Tex(NULL), TexSv(NULL), TexRtv(NULL), TexDsv(NULL), Sampler(NULL), Width(w), Height(h)
 {
 //    OVR_UNUSED(fmt);
 //    Sampler = Ren->GetSamplerState(0);
@@ -249,6 +249,11 @@ Texture::Texture(int fmt, int w, int h)
 
 Texture::~Texture()
 {
+	if(Tex) Tex->Release();
+	if(TexSv) TexSv->Release();
+	if(TexRtv) TexRtv->Release();
+	if(TexDsv) TexDsv->Release();
+	if(Sampler) Sampler->Release();
 }
 
 /*void Texture::Set(int slot, ShaderStage stage) const
