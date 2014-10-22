@@ -86,10 +86,10 @@ AutoRelease<ID3D11VertexShader> pVS;
 AutoRelease<ID3D11PixelShader> pPS;
 AutoRelease<ID3D11InputLayout> pLayout;
 AutoRelease<ID3D11Buffer> pConstantBuffer;
+AutoRelease<ID3D11Buffer> pConstantBufferWorldTransform;
 AutoRelease<ID3D11ShaderResourceView> pTextureRV;
 AutoRelease<ID3D11SamplerState> pSamplerLinear;
 
-XMMATRIX g_World1, g_World2;
 XMMATRIX g_View;
 XMMATRIX g_Projection;
 
@@ -121,13 +121,16 @@ const int Game::saveFileVersion = 1;
 
 struct ConstantBuffer
 {
-	XMMATRIX mWorld;
 	XMMATRIX mView;
 	XMMATRIX mProjection;
 	XMFLOAT4 vLightDir[1];
 	XMFLOAT4 vLightColor[1];
 	XMFLOAT4 vAmbientLight;
 	XMFLOAT4 vOutputColor;
+};
+
+struct ConstantBufferWorldTransform{
+	XMMATRIX mWorld;
 };
 
 struct CUSTOMVERTEX{
@@ -142,26 +145,7 @@ struct VERTEX
 	XMFLOAT2 Tex;           // texture coordinates
 };
 
-//const int D3DFVF_TEXTUREVERTEX = (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX1);
 
-struct TextureVertex{
-	Vec3f position;
-	Vec3f normal;
-	FLOAT tu, tv;
-};
-
-
-
-Texture *sampleTexture;
-
-static const D3D11_BUFFER_DESC textureBufferDesc = {
-	sizeof(D3D11_BUFFER_DESC),
-	D3D11_USAGE_DEFAULT,
-	D3D11_BIND_VERTEX_BUFFER,
-	0,
-	0,
-	sizeof(TextureVertex)
-};
 
 
 static Game game;
@@ -311,9 +295,6 @@ HRESULT InitD3D(HWND hWnd)
 		return E_FAIL;
 
 
-	// Initialize the world matrix
-	g_World1 = XMMatrixIdentity();
-
 	// Initialize the view matrix
 	XMVECTOR Eye = XMVectorSet( 0.0f, 0.5f, -5.0f, 0.0f );
 	XMVECTOR At = XMVectorSet( 0.0f, 1.0f, 0.0f, 0.0f );
@@ -339,8 +320,12 @@ HRESULT InitD3D(HWND hWnd)
 	if( FAILED( hr ) )
 		return hr;
 
+	bd.ByteWidth = sizeof(ConstantBufferWorldTransform);
+	hr = pd3d->CreateBuffer(&bd, nullptr, pConstantBufferWorldTransform.getpp());
+	if( FAILED( hr ) )
+		return hr;
+
 	// Sample PNG texture loaded from a file.
-	sampleTexture = LoadTexture(pd3d, pdev, "gravel.png");
 	for(int i = 0; i < numof(g_pTextures); i++){
 		Texture *tex = LoadTexture(pd3d, pdev, textureNames[i]);
 		if(tex == NULL)
@@ -594,21 +579,6 @@ bool FrustumCheck(XMVECTOR min, XMVECTOR max, const XMVECTOR* frustum)
 } 
 
 
-void RotateModel(){
-    // Set up the rotation matrix to generate 1 full rotation (2*PI radians) 
-    // every 1000 ms. To avoid the loss of precision inherent in very high 
-    // floating point numbers, the system time is modulated by the rotation 
-    // period before conversion to a radian angle.
-    UINT iTime = clock() % 5000;
-    FLOAT fAngle = iTime * ( 2.0f * XM_PI ) / 5000.0f;
-	FLOAT fPitch = sin(clock() % 33333 * (2.f * XM_PI) / 33333.f);
-	XMMATRIX matPitch = XMMatrixRotationX(fPitch);
-	XMMATRIX matYaw = XMMatrixRotationY(fAngle);
-    // For our world matrix, we will just rotate the object about the y-axis.
-	XMMATRIX matWorld = XMMatrixMultiply(matYaw, matPitch);
-	g_World1 = matWorld;
-//    pdev->SetTransform( D3DTS_WORLD, &matWorld );
-}
 #endif
 
 
@@ -617,13 +587,16 @@ static const char TexVertexShaderSrc[] =
 	"SamplerState samLinear : register( s0 );\n"
 	"cbuffer ConstantBuffer : register( b0 )\n"
 	"{\n"
-	"	matrix World;\n"
 	"	matrix View;\n"
 	"	matrix Projection;\n"
 	"	float4 vLightDir[1];\n"
 	"	float4 vLightColor[1];\n"
 	"	float4 vAmbientLight;\n"
 	"	float4 vOutputColor;\n"
+	"}\n"
+	"cbuffer ConstantBufferWorldTransform : register( b1 )\n"
+	"{\n"
+	"	matrix World;\n"
 	"}\n"
 	"struct VS_INPUT\n"
 	"{\n"
@@ -652,7 +625,6 @@ static const char TexPixelShaderSrc[] =
 	"SamplerState samLinear : register( s0 );\n"
 	"cbuffer ConstantBuffer : register( b0 )\n"
 	"{\n"
-	"	matrix World;\n"
 	"	matrix View;\n"
 	"	matrix Projection;\n"
 	"	float4 vLightDir[1];\n"
@@ -868,16 +840,6 @@ void dxtest::Game::draw(double dt)const{
 	// Clear the depth buffer to 1.0 (max depth)
 	pdev->ClearDepthStencilView( depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0 );
 
-	// Rotation for the first cube
-	g_World1 = XMMatrixRotationY( gtime );
-
-	// Orbiting second cube
-	XMMATRIX mSpin = XMMatrixRotationZ( -gtime );
-	XMMATRIX mOrbit = XMMatrixRotationY( -gtime * 2.0f );
-	XMMATRIX mTranslate = XMMatrixTranslation( -4.0f, 0.0f, 0.0f );
-	XMMATRIX mScale = XMMatrixScaling( 0.3f, 0.3f, 0.3f );
-	g_World2 = mScale * mSpin * mTranslate * mOrbit;
-
 	// Setup our lighting parameters
 	XMFLOAT4 vLightDirs[2] =
 	{
@@ -896,7 +858,6 @@ void dxtest::Game::draw(double dt)const{
 	// Update variables
 	//
 	ConstantBuffer cb;
-	cb.mWorld = XMMatrixTranspose( g_World1 );
 	cb.mView = XMMatrixTranspose( g_View );
 	cb.mProjection = XMMatrixTranspose( g_Projection );
 	cb.vLightDir[0] = vLightDirs[0];
@@ -907,6 +868,10 @@ void dxtest::Game::draw(double dt)const{
 	cb.vOutputColor = XMFLOAT4(1, 0, 0, 0);
 	pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
 
+	ConstantBufferWorldTransform cbwt;
+	cbwt.mWorld = XMMatrixTranspose(XMMatrixIdentity());
+	pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
+
 	// select which vertex buffer to display
 	UINT stride = sizeof(VERTEX);
 	UINT offset = 0;
@@ -914,11 +879,10 @@ void dxtest::Game::draw(double dt)const{
 
 	pdev->VSSetShader( pVS, nullptr, 0 );
 	pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+	pdev->VSSetConstantBuffers(1, 1, pConstantBufferWorldTransform.getpp());
 	pdev->PSSetShader( pPS, nullptr, 0 );
 	pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
-//	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
-	pdev->PSSetShaderResources( 0, 1, &sampleTexture->TexSv );
 	pdev->PSSetSamplers( 0, 1, pSamplerLinear.getpp() );
 
 	// select which primtive type we are using
@@ -927,9 +891,6 @@ void dxtest::Game::draw(double dt)const{
 
 #if 1
 /*	if(SUCCEEDED(pdev->BeginScene()))*/{
-
-		XMMATRIX matWorld = XMMatrixIdentity();
-		g_World1 = matWorld;
 
 /*		pdev->SetTexture( 0, g_pTexture);
 		pdev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
@@ -1000,7 +961,7 @@ void dxtest::Game::draw(double dt)const{
 						const Cell &cell = cv(ix, iy, iz);
 //						pdev->SetTexture(0, g_pTextures[cell.getType() & ~Cell::HalfBit]);
 						pdev->PSSetShaderResources( 0, 1, &g_pTextures[cell.getType() & ~Cell::HalfBit]->TexSv );
-						matWorld = XMMatrixTranslation(
+						XMMATRIX matWorld = XMMatrixTranslation(
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
@@ -1012,13 +973,12 @@ void dxtest::Game::draw(double dt)const{
 							XMMATRIX matscale = XMMatrixScaling(1, 0.5, 1.);
 							XMMATRIX matresult = XMMatrixMultiply(matscale, matWorld);
 
-							cb.mWorld = XMMatrixTranspose(matresult);
-							pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
+							cbwt.mWorld = XMMatrixTranspose(matresult);
+							pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
 						}
 						else{
-							g_World1 = matWorld;
-							cb.mWorld = XMMatrixTranspose(g_World1);
-							pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
+							cbwt.mWorld = XMMatrixTranspose(matWorld);
+							pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
 						}
 						if(!x0 && !x1 && !y0 && !y1)
 							pdev->DrawIndexed(36, 0, 0);
@@ -1106,7 +1066,7 @@ void dxtest::Game::draw(double dt)const{
 						bool y1 = !cv(ix, iy + 1, iz).isTranslucent();
 						bool z0 = !cv(ix, iy, iz - 1).isTranslucent();
 						bool z1 = !cv(ix, iy, iz + 1).isTranslucent();
-						matWorld = XMMatrixTranslation(
+						XMMATRIX matWorld = XMMatrixTranslation(
 							it->first[0] * CELLSIZE + (ix - CELLSIZE / 2),
 							it->first[1] * CELLSIZE + (iy - CELLSIZE / 2),
 							it->first[2] * CELLSIZE + (iz - CELLSIZE / 2));
@@ -1118,8 +1078,8 @@ void dxtest::Game::draw(double dt)const{
 						z0 |= cv(ix, iy, iz - 1).getType() != cell.Air;
 						z1 |= cv(ix, iy, iz + 1).getType() != cell.Air;
 
-						g_World1 = matWorld;
-//						pdev->SetTransform(D3DTS_WORLD, &matWorld);
+						cbwt.mWorld = XMMatrixTranspose(matWorld);
+						pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
 
 						if(!x0 && !x1 && !y0 && !y1)
 							pdev->DrawIndexed(36, 0, 0);
