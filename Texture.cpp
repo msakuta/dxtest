@@ -98,10 +98,10 @@ static Texture *LoadJPEG(ID3D11Device *pd3d, ID3D11DeviceContext *pcon, const ch
 	while (cinfo.output_scanline < cinfo.output_height) {
 		(void) jpeg_read_scanlines(&cinfo, buffer, 1);
 
-		// We cannot just memcpy it because of byte ordering.
+		// We cannot just memcpy it because JSAMPLE and Direct3D texture pixel format does not necessarily match.
 		if(cinfo.output_components == 3) for(int j = 0; j < cinfo.output_width; j++){
 			JSAMPLE *src = &buffer[0][j * cinfo.output_components];
-			panel[j + cinfo.output_width * (cinfo.output_scanline - 1)] = Color(src[2], src[1], src[0], 255);
+			panel[j + cinfo.output_width * (cinfo.output_scanline - 1)] = Color(src[0], src[1], src[2], 255);
 		}
 		else if(cinfo.output_components == 1) for(int j = 0; j < cinfo.output_width; j++){
 			JSAMPLE *src = &buffer[0][j * cinfo.output_components];
