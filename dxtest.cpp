@@ -486,8 +486,11 @@ static XMVECTOR frustum[6];
 //-----------------------------------------------------------------------------
 VOID SetupMatrices()
 {
-
-	XMMATRIX matEye = XMMatrixRotationQuaternion(*(FXMVECTOR*)(&player.rot.cast<float>()));
+	Quatf q = player.rot.cast<float>();
+	XMVECTOR rot;
+	for(int i = 0; i < 4; i++)
+		rot.m128_f32[i] = q[i];
+	XMMATRIX matEye = XMMatrixRotationQuaternion(rot);
 	XMMATRIX matRot = XMMatrixTranslation(-player.pos[0], -player.pos[1], -player.pos[2]);
 	XMMATRIX matView = XMMatrixMultiply(matRot, matEye);
 	g_View = matView;
