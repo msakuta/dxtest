@@ -82,8 +82,12 @@ const char *textureNames[6] = {"cursor.png", "grass.jpg", "dirt.jpg", "gravel.pn
 //ID3D11Sprite g_sprite;
 AutoRelease<ID3D11Buffer> pVBuffer; // Vertex buffer
 AutoRelease<ID3D11Buffer> pIndexBuffer; // Index buffer
+AutoRelease<ID3D11Buffer> pRectVBuffer; // Vertex buffer for a rectangle
+AutoRelease<ID3D11Buffer> pRectIndexBuffer; // Index buffer for the rectangle
 AutoRelease<ID3D11VertexShader> pVS;
 AutoRelease<ID3D11PixelShader> pPS;
+AutoRelease<ID3D11VertexShader> pSolidVS;
+AutoRelease<ID3D11PixelShader> pSolidPS;
 AutoRelease<ID3D11InputLayout> pLayout;
 AutoRelease<ID3D11Buffer> pConstantBuffer;
 AutoRelease<ID3D11Buffer> pConstantBufferWorldTransform;
@@ -278,9 +282,6 @@ HRESULT InitD3D(HWND hWnd)
 	if( FAILED( hr ) )
 		return hr;
 
-	// Set the render target to current
-	pdev->OMSetRenderTargets(1, backbuffer.getpp(), depthStencilView);
-
 	// Viewport
 	D3D11_VIEWPORT vp;
 	vp.TopLeftX = 0;
@@ -455,8 +456,44 @@ static HRESULT InitGeometry()
 	if( FAILED( hr ) )
 		return hr;
 
-	// Set index buffer
-	pdev->IASetIndexBuffer( pIndexBuffer, DXGI_FORMAT_R16_UINT, 0 );
+	// Create vertex buffer for a single rectangle.
+	// Using vertex buffer for such a low-poly geometry is kind of overkill, but DirectX11 allows
+	// only this way.
+	// If only we've got OpenGL...
+	static const VERTEX rectVertices[] =
+	{
+		{XMFLOAT3(0, 0, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(0, 0)},
+		{XMFLOAT3(0, 1, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(0, 1)},
+		{XMFLOAT3(1, 1, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(1, 1)},
+		{XMFLOAT3(1, 0, 1), XMFLOAT3(0, -1, 0), XMFLOAT2(1, 0)},
+	};
+	bd.Usage = D3D11_USAGE_DYNAMIC;                // write access access by CPU and GPU
+	bd.ByteWidth = sizeof rectVertices;            // size is the VERTEX struct * 3
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;       // use as a vertex buffer
+	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;    // allow CPU to write in buffer
+	if(FAILED(pd3d->CreateBuffer(&bd, NULL, pRectVBuffer.getpp())))
+		return E_FAIL;       // create the buffer
+
+	if(FAILED(pdev->Map(pRectVBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms)))
+		return E_FAIL;   // map the buffer
+	memcpy(ms.pData, rectVertices, sizeof(rectVertices));                // copy the data
+	pdev->Unmap(pRectVBuffer, NULL);                                 // unmap the buffer
+
+	// Create index buffer for rectangle
+	ZeroMemory( &InitData, sizeof(InitData) );
+	static const WORD rectIndices[] =
+	{
+		0,1,2,
+		2,3,0,
+	};
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof rectIndices;        // 36 vertices needed for 12 triangles in a triangle list
+	bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	bd.CPUAccessFlags = 0;
+	InitData.pSysMem = rectIndices;
+	hr = pd3d->CreateBuffer(&bd, &InitData, pRectIndexBuffer.getpp());
+	if( FAILED( hr ) )
+		return hr;
 
 	return S_OK;
 }
@@ -652,6 +689,68 @@ static const char TexPixelShaderSrc[] =
 	"	return finalColor;\n"
 	"}\n";
 
+static const char SolidVertexShaderSrc[] =
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
+	"	float4 vOutputColor;\n"
+	"}\n"
+	"cbuffer ConstantBufferWorldTransform : register( b1 )\n"
+	"{\n"
+	"	matrix World;\n"
+	"}\n"
+	"struct VS_INPUT\n"
+	"{\n"
+	"	float4 Position : POSITION;\n"
+	"	float3 Norm : NORMAL;\n"
+	"	float2 Tex : TEXCOORD0;\n"
+	"};\n"
+	"struct Varyings\n"
+	"{\n"
+	"	float4 Position : SV_Position;\n"
+	"	float3 Norm     : NORMAL;\n"
+	"};\n"
+	"void main(in VS_INPUT input,\n"
+	"          out Varyings ov)\n"
+	"{\n"
+	"	float4 worldPosition = mul(input.Position, World);\n"
+	"	float4 viewPosition = mul(worldPosition, View);\n"
+	"	ov.Position = mul(viewPosition, Projection);\n"
+	"	ov.Norm = mul(float4(input.Norm, 0), World).xyz;\n"
+	"}\n";
+
+static const char SolidPixelShaderSrc[] =
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
+	"	float4 vOutputColor;\n"
+	"}\n"
+	"float4 Color;\n"
+	"struct Varyings\n"
+	"{\n"
+	"	float4 Position : SV_Position;\n"
+	"	float3 Norm     : NORMAL;\n"
+	"};\n"
+	"float4 main(in Varyings ov) : SV_Target\n"
+	"{\n"
+	"	float4 finalColor = 0;\n"
+	"	for(int i=0; i<1; i++)\n"
+	"	{\n"
+	"		finalColor += saturate(dot((float3)vLightDir[i], ov.Norm) * vLightColor[i]);\n"
+	"	}\n"
+	"	finalColor = saturate(finalColor + vAmbientLight);\n"
+	"	finalColor.a = 1;\n"
+	"	return finalColor;\n"
+	"}\n";
+
 
 static bool InitPipeline()
 {
@@ -685,10 +784,25 @@ static bool InitPipeline()
 		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(VERTEX, Tex), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
+	// MSDN says the input layout can be reused among different vertex shaders which have the same layout and semantics.
 	int nied = numof(ied);
 	if(FAILED(pd3d->CreateInputLayout(ied, nied, VS->GetBufferPointer(), VS->GetBufferSize(), pLayout.getpp())))
 		return false;
 	pdev->IASetInputLayout(pLayout);
+
+	// Shaders for solid surface (no texture)
+	AutoRelease<ID3D10Blob> solidVS, solidPS;
+	if(FAILED(D3DCompile(SolidVertexShaderSrc, sizeof SolidVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, solidVS.getpp(), 0)))
+		return false;
+	if(FAILED(D3DCompile(SolidPixelShaderSrc, sizeof SolidPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, solidPS.getpp(), 0)))
+		return false;
+
+	// encapsulate both shaders into shader objects
+	if(FAILED(pd3d->CreateVertexShader(solidVS->GetBufferPointer(), solidVS->GetBufferSize(), NULL, pSolidVS.getpp())))
+		return false;
+	if(FAILED(pd3d->CreatePixelShader(solidPS->GetBufferPointer(), solidPS->GetBufferSize(), NULL, pSolidPS.getpp())))
+		return false;
+
 	return true;
 }
 
@@ -834,6 +948,9 @@ public:
 };
 
 void dxtest::Game::draw(double dt)const{
+	// Set the render target to current
+	pdev->OMSetRenderTargets(1, backbuffer.getpp(), depthStencilView);
+
 	// clear the back buffer to a deep blue
 	pdev->ClearRenderTargetView(backbuffer, Vec4f(0.0f, 0.2f, 0.4f, 1.0f));
 
@@ -876,6 +993,10 @@ void dxtest::Game::draw(double dt)const{
 	UINT stride = sizeof(VERTEX);
 	UINT offset = 0;
 	pdev->IASetVertexBuffers(0, 1, pVBuffer.getpp(), &stride, &offset);
+	// Set index buffer
+	pdev->IASetIndexBuffer( pIndexBuffer, DXGI_FORMAT_R16_UINT, 0 );
+	// select which primtive type we are using
+	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	pdev->VSSetShader( pVS, nullptr, 0 );
 	pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
@@ -885,8 +1006,6 @@ void dxtest::Game::draw(double dt)const{
 	pdev->PSSetShaderResources( 0, 1, pTextureRV.getpp() );
 	pdev->PSSetSamplers( 0, 1, pSamplerLinear.getpp() );
 
-	// select which primtive type we are using
-	pdev->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
 #if 1
@@ -1103,22 +1222,67 @@ void dxtest::Game::draw(double dt)const{
 			}
 		}
 
-#if 0
 		{
+			int halfWidth = windowWidth / 2;
+			int halfHeight = windowHeight / 2;
+			int iconSize = 64;
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
 			XMMATRIX mat, matscale, mattrans;
-			XMRECT dr = {-numof(types) / 2 * 64 + windowWidth / 2 - 8, windowHeight - 64 - 8, numof(types) / 2 * 64 + windowWidth / 2 + 8, windowHeight};
-			
-			pdev->Clear(1, &dr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 63), 0.0f, 0);
+			RECT dr = {-numof(types) / 2 * iconSize - 8, -halfHeight, numof(types) / 2 * iconSize, -halfHeight + iconSize + 8};
+
+			pdev->IASetInputLayout(pLayout);
+
+			// Detach the depth stencil view to disable depth tests
+			pdev->OMSetRenderTargets(1, backbuffer.getpp(), nullptr);
+
+			// Shader objects for solid surface
+			pdev->VSSetShader(pSolidVS, nullptr, 0);
+			pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+			pdev->VSSetConstantBuffers(1, 1, pConstantBufferWorldTransform.getpp());
+			pdev->PSSetShader(pSolidPS, nullptr, 0);
+			pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+
+//			cb.mProjection = XMMatrixIdentity();
+			cb.mView = XMMatrixIdentity();
+			pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
+			cbwt.mWorld = XMMatrixScaling(double(dr.right - dr.left) / halfWidth, double(dr.bottom - dr.top) / halfHeight, 1);
+			cbwt.mWorld *= XMMatrixTranslation(double(dr.left) / halfWidth, double(dr.top) / halfHeight, 0);
+//			cbwt.mWorld = XMMatrixIdentity();
+			cbwt.mWorld = XMMatrixTranspose(cbwt.mWorld);
+			pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
+
+			stride = sizeof(VERTEX);
+			offset = 0;
+			pdev->IASetVertexBuffers(0, 1, pRectVBuffer.getpp(), &stride, &offset);
+			pdev->IASetIndexBuffer(pRectIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+			pdev->DrawIndexed(2 * 3, 0, 0);
+
+			// Shader objects for textured surface
+			pdev->VSSetShader(pVS, nullptr, 0);
+			pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+			pdev->VSSetConstantBuffers(1, 1, pConstantBufferWorldTransform.getpp());
+			pdev->PSSetShader(pPS, nullptr, 0);
+			pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
+
 			for(int i = 0; i < numof(types); i++){
 				const MaterialData &type = types[i];
 				Cell::Type t = type.type;
 				bool half = t & Cell::HalfBit;
 
-				D3DXMatrixScaling( &matscale, type.tex.scale, type.tex.scale, 1. );
-				D3DXMatrixTranslation(&mattrans, (i - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64 + (half ? 32 : 0), 0);
-				D3DXMatrixMultiply(&mat, &matscale, &mattrans);
-				g_sprite->SetTransform(&mat);
+				XMMATRIX matscale = XMMatrixScaling((double)type.tex.scale * iconSize / halfWidth,
+					(double)type.tex.scale * iconSize / halfHeight, 1.);
+				XMMATRIX mattrans = XMMatrixTranslation(
+					(i - numof(types) / 2) * iconSize + halfWidth / 2,
+					(-halfHeight + (half ? iconSize / 2 : 0)) / halfHeight, 0);
+				XMMATRIX mat = XMMatrixMultiply(matscale, mattrans);
+
+				cbwt.mWorld = XMMatrixTranspose(mat);
+				pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
+
+				pdev->DrawIndexed(2 * 3, 0, 0);
+
+/*				g_sprite->SetTransform(&mat);
 				g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
 				RECT srcrect = {0, (half ? type.tex.size / 2 : 0), type.tex.size, type.tex.size};
 				g_sprite->Draw(g_pTextures[type.tex.index], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
@@ -1136,10 +1300,11 @@ void dxtest::Game::draw(double dt)const{
 				}
 				r.left = (i - numof(types) / 2) * 64 + windowWidth / 2;
 				r.right = r.left + 64;
-				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));
+				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));*/
 			}
 
 		}
+#if 0
 		if(player->showMiniMap)
 			drawMiniMap(dt);
 
