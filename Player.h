@@ -7,7 +7,7 @@
 #include "World.h"
 #include <assert.h>
 #include <windows.h>
-#include <d3dx9.h>
+#include <d3d11.h>
 extern "C"{
 #include <clib/c.h>
 #include <clib/suf/suf.h>
