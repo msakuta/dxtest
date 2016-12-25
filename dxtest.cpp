@@ -22,7 +22,7 @@ extern "C"{
 #include <stdio.h>
 #include <time.h>
 #include <sstream>
-//#include <algorithm>
+#include <algorithm>
 /** \file
  *  \brief The main source
  */
