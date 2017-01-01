@@ -86,6 +86,8 @@ AutoRelease<ID3D11Buffer> pRectVBuffer; // Vertex buffer for a rectangle
 AutoRelease<ID3D11Buffer> pRectIndexBuffer; // Index buffer for the rectangle
 AutoRelease<ID3D11VertexShader> pVS;
 AutoRelease<ID3D11PixelShader> pPS;
+AutoRelease<ID3D11VertexShader> pNoLightTexVS;
+AutoRelease<ID3D11PixelShader> pNoLightTexPS;
 AutoRelease<ID3D11VertexShader> pSolidVS;
 AutoRelease<ID3D11PixelShader> pSolidPS;
 AutoRelease<ID3D11InputLayout> pLayout;
@@ -689,6 +691,70 @@ static const char TexPixelShaderSrc[] =
 	"	return finalColor;\n"
 	"}\n";
 
+static const char NoLightTexVertexShaderSrc[] =
+	"Texture2D txDiffuse : register( t0 );\n"
+	"SamplerState samLinear : register( s0 );\n"
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
+	"	float4 vOutputColor;\n"
+	"}\n"
+	"cbuffer ConstantBufferWorldTransform : register( b1 )\n"
+	"{\n"
+	"	matrix World;\n"
+	"}\n"
+	"struct VS_INPUT\n"
+	"{\n"
+	"	float4 Position : POSITION;\n"
+	"	float3 Norm : NORMAL;\n"
+	"	float2 Tex : TEXCOORD0;\n"
+	"};\n"
+	"struct Varyings\n"
+	"{\n"
+	"	float4 Position : SV_Position;\n"
+	"	float3 Norm     : NORMAL;\n"
+	"	float2 Tex      : TEXCOORD0;\n"
+	"};\n"
+	"void main(in VS_INPUT input,\n"
+	"          out Varyings ov)\n"
+	"{\n"
+	"	float4 worldPosition = mul(input.Position, World);\n"
+	"	float4 viewPosition = mul(worldPosition, View);\n"
+	"	ov.Position = mul(viewPosition, Projection);\n"
+	"	ov.Norm = mul(float4(input.Norm, 0), World).xyz;\n"
+	"	ov.Tex = input.Tex;\n"
+	"}\n";
+
+static const char NoLightTexPixelShaderSrc[] =
+	"Texture2D txDiffuse : register( t0 );\n"
+	"SamplerState samLinear : register( s0 );\n"
+	"cbuffer ConstantBuffer : register( b0 )\n"
+	"{\n"
+	"	matrix View;\n"
+	"	matrix Projection;\n"
+	"	float4 vLightDir[1];\n"
+	"	float4 vLightColor[1];\n"
+	"	float4 vAmbientLight;\n"
+	"	float4 vOutputColor;\n"
+	"}\n"
+	"float4 Color;\n"
+	"struct Varyings\n"
+	"{\n"
+	"	float4 Position : SV_Position;\n"
+	"	float3 Norm     : NORMAL;\n"
+	"	float2 Tex      : TEXCOORD0;\n"
+	"};\n"
+	"float4 main(in Varyings ov) : SV_Target\n"
+	"{\n"
+	"	float4 finalColor = 0;\n"
+	"	finalColor = txDiffuse.Sample( samLinear, ov.Tex );\n"
+	"	return finalColor;\n"
+	"}\n";
+
 static const char SolidVertexShaderSrc[] =
 	"cbuffer ConstantBuffer : register( b0 )\n"
 	"{\n"
@@ -789,6 +855,19 @@ static bool InitPipeline()
 	if(FAILED(pd3d->CreateInputLayout(ied, nied, VS->GetBufferPointer(), VS->GetBufferSize(), pLayout.getpp())))
 		return false;
 	pdev->IASetInputLayout(pLayout);
+
+	// Shaders for no lighting surface (with texture)
+	AutoRelease<ID3D10Blob> noLightTexVS, noLightTexPS;
+	if(FAILED(D3DCompile(NoLightTexVertexShaderSrc, sizeof NoLightTexVertexShaderSrc, "VShader", 0, 0, "main", "vs_4_0", 0, 0, noLightTexVS.getpp(), 0)))
+		return false;
+	if(FAILED(D3DCompile(NoLightTexPixelShaderSrc, sizeof NoLightTexPixelShaderSrc, "PShader", 0, 0, "main", "ps_4_0", 0, 0, noLightTexPS.getpp(), 0)))
+		return false;
+
+	// encapsulate both shaders into shader objects
+	if(FAILED(pd3d->CreateVertexShader(noLightTexVS->GetBufferPointer(), noLightTexVS->GetBufferSize(), NULL, pNoLightTexVS.getpp())))
+		return false;
+	if(FAILED(pd3d->CreatePixelShader(noLightTexPS->GetBufferPointer(), noLightTexPS->GetBufferSize(), NULL, pNoLightTexPS.getpp())))
+		return false;
 
 	// Shaders for solid surface (no texture)
 	AutoRelease<ID3D10Blob> solidVS, solidPS;
@@ -1225,10 +1304,11 @@ void dxtest::Game::draw(double dt)const{
 		{
 			int halfWidth = windowWidth / 2;
 			int halfHeight = windowHeight / 2;
+			int halfMinSize = std::min(halfWidth, halfHeight);
 			int iconSize = 64;
 			RECT r = {-numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight - 64, numof(g_pTextures) / 2 * 64 + windowWidth / 2, windowHeight};
-			XMMATRIX mat, matscale, mattrans;
-			RECT dr = {-numof(types) / 2 * iconSize - 8, -halfHeight, numof(types) / 2 * iconSize, -halfHeight + iconSize + 8};
+			XMMATRIX mat, matscale, mattrans; 
+			RECT dr = {-numof(types) / 2 * iconSize - 8, -halfHeight, numof(types) / 2 * iconSize + 8, -halfHeight + iconSize + 8};
 
 			pdev->IASetInputLayout(pLayout);
 
@@ -1244,9 +1324,10 @@ void dxtest::Game::draw(double dt)const{
 
 //			cb.mProjection = XMMatrixIdentity();
 			cb.mView = XMMatrixIdentity();
+			cb.vAmbientLight = XMFLOAT4(.5f, .5f, .5f, 1);
 			pdev->UpdateSubresource(pConstantBuffer, 0, nullptr, &cb, 0, 0);
-			cbwt.mWorld = XMMatrixScaling(double(dr.right - dr.left) / halfWidth, double(dr.bottom - dr.top) / halfHeight, 1);
-			cbwt.mWorld *= XMMatrixTranslation(double(dr.left) / halfWidth, double(dr.top) / halfHeight, 0);
+			cbwt.mWorld = XMMatrixScaling(double(dr.right - dr.left) / halfMinSize, double(dr.bottom - dr.top) / halfHeight, 1);
+			cbwt.mWorld *= XMMatrixTranslation(double(dr.left) / halfMinSize, double(dr.top) / halfHeight, 0);
 //			cbwt.mWorld = XMMatrixIdentity();
 			cbwt.mWorld = XMMatrixTranspose(cbwt.mWorld);
 			pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
@@ -1259,10 +1340,10 @@ void dxtest::Game::draw(double dt)const{
 			pdev->DrawIndexed(2 * 3, 0, 0);
 
 			// Shader objects for textured surface
-			pdev->VSSetShader(pVS, nullptr, 0);
+			pdev->VSSetShader(pNoLightTexVS, nullptr, 0);
 			pdev->VSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 			pdev->VSSetConstantBuffers(1, 1, pConstantBufferWorldTransform.getpp());
-			pdev->PSSetShader(pPS, nullptr, 0);
+			pdev->PSSetShader(pNoLightTexPS, nullptr, 0);
 			pdev->PSSetConstantBuffers(0, 1, pConstantBuffer.getpp());
 
 			for(int i = 0; i < numof(types); i++){
@@ -1270,12 +1351,14 @@ void dxtest::Game::draw(double dt)const{
 				Cell::Type t = type.type;
 				bool half = t & Cell::HalfBit;
 
-				XMMATRIX matscale = XMMatrixScaling((double)type.tex.scale * iconSize / halfWidth,
-					(double)type.tex.scale * iconSize / halfHeight, 1.);
+				XMMATRIX matscale = XMMatrixScaling((double)iconSize / halfMinSize,
+					(double)iconSize / halfMinSize * (half ? 0.5 : 1), 1.);
 				XMMATRIX mattrans = XMMatrixTranslation(
-					(i - numof(types) / 2) * iconSize + halfWidth / 2,
-					(-halfHeight + (half ? iconSize / 2 : 0)) / halfHeight, 0);
+					double(i - (int)numof(types) / 2) * iconSize / halfMinSize,
+					-1, 0);
 				XMMATRIX mat = XMMatrixMultiply(matscale, mattrans);
+
+				pdev->PSSetShaderResources( 0, 1, &g_pTextures[t & ~Cell::HalfBit]->TexSv );
 
 				cbwt.mWorld = XMMatrixTranspose(mat);
 				pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
