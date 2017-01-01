@@ -752,6 +752,9 @@ static const char NoLightTexPixelShaderSrc[] =
 	"{\n"
 	"	float4 finalColor = 0;\n"
 	"	finalColor = txDiffuse.Sample( samLinear, ov.Tex );\n"
+	// AlphaTest
+	"	if( finalColor.w <= 0.001 )\n"
+	"		clip( -1 );\n"
 	"	return finalColor;\n"
 	"}\n";
 
@@ -1365,23 +1368,16 @@ void dxtest::Game::draw(double dt)const{
 
 				pdev->DrawIndexed(2 * 3, 0, 0);
 
-/*				g_sprite->SetTransform(&mat);
-				g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
-				RECT srcrect = {0, (half ? type.tex.size / 2 : 0), type.tex.size, type.tex.size};
-				g_sprite->Draw(g_pTextures[type.tex.index], &srcrect, NULL, &D3DXVECTOR3(0, 0, 0),
-					D3DCOLOR_ARGB(player->curtype == t ? 255 : 127,255,255,255));
-				g_sprite->End();
-
 				// Show cursor
 				if(player->curtype == t){
-					D3DXMatrixTranslation(&mattrans, (i - numof(types) / 2) * 64 + windowWidth / 2, windowHeight - 64, 0);
-					g_sprite->SetTransform(&mattrans);
-					g_sprite->Begin(D3DXSPRITE_ALPHABLEND);
-					g_sprite->Draw(g_pTextures[0], NULL, NULL, &D3DXVECTOR3(0, 0, 0),
-						D3DCOLOR_ARGB(255,255,255,255));
-					g_sprite->End();
+					XMMATRIX matscale2 = XMMatrixScaling((double)iconSize / halfMinSize, (double)iconSize / halfMinSize, 1.);
+					pdev->PSSetShaderResources( 0, 1, &g_pTextures[0]->TexSv ); // Select cursor texture
+
+					cbwt.mWorld = XMMatrixTranspose(matscale2 * mattrans); // Share mattrans with icon image
+					pdev->UpdateSubresource(pConstantBufferWorldTransform, 0, nullptr, &cbwt, 0, 0);
+					pdev->DrawIndexed(2 * 3, 0, 0);
 				}
-				r.left = (i - numof(types) / 2) * 64 + windowWidth / 2;
+/*				r.left = (i - numof(types) / 2) * 64 + windowWidth / 2;
 				r.right = r.left + 64;
 				g_font->DrawTextA(NULL, dstring() << player->getBricks(t), -1, &r, 0, D3DCOLOR_ARGB(255, 255, 25, 25));*/
 			}
